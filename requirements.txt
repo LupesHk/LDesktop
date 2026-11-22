@@ -1,0 +1,10 @@
+
+PySide6
+keyboard
+Pillow
+winotify
+requests
+numpy
+SoundCard
+soundfile
+pyinstaller==6.22.3

@@ -98,7 +98,8 @@ class ReplayRecorder:
                 command,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
-                timeout=15
+                timeout=15,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             return result.returncode == 0
@@ -117,7 +118,8 @@ class ReplayRecorder:
             [str(FFMPEG), "-hide_banner", "-encoders"],
             capture_output=True,
             text=True,
-            timeout=15
+            timeout=15,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
 
         available = result.stdout
@@ -324,7 +326,8 @@ class ReplayRecorder:
                     ],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW
                 )
 
                 if result.returncode != 0:
@@ -403,7 +406,8 @@ class ReplayRecorder:
                 concat_command,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             if result.returncode != 0:
@@ -445,7 +449,8 @@ class ReplayRecorder:
                 mux_command,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
 
             if result.returncode != 0:

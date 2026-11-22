@@ -4,15 +4,17 @@ import sys
 from pathlib import Path
 
 
-# Pasta principal do aplicativo
+# Diretório do aplicativo
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
+    RESOURCE_DIR = Path(sys._MEIPASS).resolve()
 else:
     APP_DIR = Path(__file__).resolve().parents[2]
+    RESOURCE_DIR = APP_DIR
 
 
 # Dependências distribuídas junto ao aplicativo
-BIN_DIR = APP_DIR / "bin"
+BIN_DIR = RESOURCE_DIR / "bin"
 
 FFMPEG = BIN_DIR / "ffmpeg.exe"
 FFPROBE = BIN_DIR / "ffprobe.exe"
@@ -39,8 +41,6 @@ FFMPEG_LOG = LOG_DIR / "ffmpeg.log"
 
 
 def ensure_data_dirs():
-    """Cria as pastas necessárias para o funcionamento do aplicativo."""
-
     for directory in (
         BUFFER_DIR,
         SAVED_DIR,
