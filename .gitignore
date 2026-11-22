@@ -1,0 +1,40 @@
+
+# Ambiente Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Arquivos pessoais e configurações
+.env
+.env.*
+!.env.example
+device.json
+*.token
+
+# Dados e gravações
+data/
+*.mp4
+*.wav
+*.log
+
+# Dependências binárias distribuídas separadamente
+bin/*.exe
+
+# Compilação
+build/
+dist/
+*.tmp
+*.part
+
+# Sistema operacional
+Thumbs.db
+.DS_Store
+
+# Testes e arquivos temporários locais
+mix_audio.py
+segment_*.ts
+
+# Dados antigos dentro do código-fonte
+src/data/
