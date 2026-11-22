@@ -10,23 +10,76 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
-    QStyle
+    QStyle,
+    QMessageBox,
+    QProgressDialog,
 )
 
 from PySide6.QtGui import QAction
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 import keyboard
 import sys
 import signal
+import os
+import shutil
+import ctypes
+import subprocess
 
+from pathlib import Path
 from replay.recorder import ReplayRecorder
 from modules.capture import capture_screen
 from modules.link_window import LinkWindow
 from core.update_config import APP_VERSION
-from core.update_checker import UpdateWorker
 from core.update_config import UPDATE_CHECK_ON_STARTUP
+from ctypes import wintypes
 
+from core.update_checker import (
+    UpdateWorker,
+    UpdateDownloadWorker
+)
+
+from core.paths import DATA_DIR
+
+def confirm_update_startup():
+    event_name = os.environ.get(
+        "LDESKTOP_UPDATE_CONFIRMATION"
+    )
+
+    if not event_name:
+        return
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    EVENT_MODIFY_STATE = 0x0002
+
+    kernel32.OpenEventW.argtypes = [
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.LPCWSTR,
+    ]
+    kernel32.OpenEventW.restype = wintypes.HANDLE
+
+    kernel32.SetEvent.argtypes = [wintypes.HANDLE]
+    kernel32.SetEvent.restype = wintypes.BOOL
+
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.OpenEventW(
+        EVENT_MODIFY_STATE,
+        False,
+        event_name
+    )
+
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    try:
+        if not kernel32.SetEvent(handle):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel32.CloseHandle(handle)
 
 class LDesktop(QWidget):
 
@@ -113,10 +166,159 @@ class LDesktop(QWidget):
             self.update_worker.start()
 
 
+
     def on_update_available(self, update):
-        print(
-            f"[UPDATE] Nova versão disponível: {update.version}"
+
+        if not getattr(sys, "frozen", False):
+            print(
+                f"[UPDATE] Versão disponível: {update.version}. "
+                "Instalação automática disponível somente no executável."
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Atualização disponível",
+            (
+                f"Uma nova versão do L Desktop está disponível.\n\n"
+                f"Versão atual: {APP_VERSION}\n"
+                f"Nova versão: {update.version}\n\n"
+                f"{update.notes}\n\n"
+                "Deseja baixar a atualização?"
+            ),
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
         )
+
+        if answer == QMessageBox.StandardButton.Yes:
+            self.start_update_download(update)
+
+
+    def start_update_download(self, update):
+
+        self.update_progress = QProgressDialog(
+            "Baixando atualização...",
+            "Cancelar",
+            0,
+            100,
+            self
+        )
+
+        self.update_progress.setWindowTitle(
+            "Atualizando L Desktop"
+        )
+
+        self.update_progress.setWindowModality(
+            Qt.WindowModality.WindowModal
+        )
+
+        self.update_progress.setAutoClose(False)
+        self.update_progress.setAutoReset(False)
+        self.update_progress.setValue(0)
+
+        self.download_worker = UpdateDownloadWorker(
+            update,
+            self
+        )
+
+        self.download_worker.progress.connect(
+            self.update_progress.setValue
+        )
+
+        self.download_worker.download_ready.connect(
+            self.on_update_download_ready
+        )
+
+        self.download_worker.download_failed.connect(
+            self.on_update_download_failed
+        )
+
+        self.update_progress.canceled.connect(
+            self.download_worker.requestInterruption
+        )
+
+        self.download_worker.start()
+        self.update_progress.show()
+
+
+    def on_update_download_failed(self, error):
+
+        self.update_progress.close()
+
+        QMessageBox.warning(
+            self,
+            "Falha na atualização",
+            f"Não foi possível baixar a atualização:\n\n{error}"
+        )
+
+
+    def on_update_download_ready(self, installer_path):
+
+        self.update_progress.close()
+
+        if self.download_worker:
+            self.download_worker.wait()
+
+        installer = Path(installer_path).resolve()
+
+        updater_source = (
+            DATA_DIR / "updater" / "LDesktopUpdater.exe"
+        )
+
+        local_appdata = Path(
+            os.environ.get("LOCALAPPDATA", Path.home())
+        )
+
+        update_dir = local_appdata / "LDesktop" / "updates"
+        update_dir.mkdir(parents=True, exist_ok=True)
+
+        updater_target = update_dir / "LDesktopUpdater.exe"
+
+        try:
+            if not updater_source.is_file():
+                raise FileNotFoundError(
+                    f"Atualizador não encontrado: {updater_source}"
+                )
+
+            shutil.copy2(
+                updater_source,
+                updater_target
+            )
+
+            QMessageBox.information(
+                self,
+                "Atualização pronta",
+                "O L Desktop será encerrado para instalar a atualização."
+            )
+
+            subprocess.Popen(
+                [
+                    str(updater_target),
+                    "--parent-pid",
+                    str(os.getpid()),
+                    "--installer",
+                    str(installer),
+                    "--app-exe",
+                    str(Path(sys.executable).resolve())
+                ],
+                cwd=str(update_dir),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.DETACHED_PROCESS
+            )
+
+            from PySide6.QtWidgets import QApplication
+            QApplication.quit()
+
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Erro ao iniciar atualização",
+                str(error)
+            )
+
 
     def on_update_check_failed(self, error):
         print(f"[UPDATE] Falha na verificação: {error}")
@@ -133,8 +335,25 @@ class LDesktop(QWidget):
             keyboard.remove_hotkey(self.replay_hotkey_id)
         except Exception as error:
             print(f"[L DESKTOP] Erro ao remover F9: {error}")
-        if self.update_worker and self.update_worker.isRunning():
-            self.update_worker.wait(9000)
+
+        try:
+            if self.update_worker and self.update_worker.isRunning():
+                self.update_worker.requestInterruption()
+                self.update_worker.wait()
+        except Exception as error:
+            print(f"[L DESKTOP] Erro ao encerrar verificação de atualização: {error}")
+
+        try:
+            if (
+                hasattr(self, "download_worker")
+                and self.download_worker
+                and self.download_worker.isRunning()
+            ):
+                self.download_worker.requestInterruption()
+                self.download_worker.wait()
+        except Exception as error:
+            print(f"[L DESKTOP] Erro ao encerrar download: {error}")
+
         try:
             if hasattr(self, "recorder"):
                 self.recorder.stop()
@@ -289,13 +508,14 @@ def main():
 
     window = LDesktop()
 
+    QTimer.singleShot(2000, confirm_update_startup)
+
     app.aboutToQuit.connect(window.cleanup)
 
     # Permite que o Python processe Ctrl+C durante o loop do Qt.
     signal.signal(signal.SIGINT, lambda *_: app.quit())
 
     # Mantém o tratamento de sinais ativo sem bloquear a interface.
-    from PySide6.QtCore import QTimer
 
     signal_timer = QTimer()
     signal_timer.timeout.connect(lambda: None)

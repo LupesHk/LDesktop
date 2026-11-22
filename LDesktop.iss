@@ -1,6 +1,6 @@
 
 #define MyAppName "L Desktop"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "LupesHk"
 #define MyAppExeName "LDesktop.exe"
 
@@ -34,7 +34,11 @@ Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortugue
 Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos:"; Flags: unchecked
 
 [Files]
+; Aplicativo principal
 Source: "dist\LDesktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Atualizador independente
+Source: "dist\updater\LDesktopUpdater.exe"; DestDir: "{userappdata}\LDesktop\updater"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"
