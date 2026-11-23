@@ -1,6 +1,6 @@
 {
-    "version":  "0.1.4",
-    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.4/LDesktop-Setup-0.1.4.exe",
-    "sha256":  "E0D8D0D2FAAADBB79FEAF22A4218234719FE4B8CC854E59974211FFFC42F50C5",
-    "notes":  "Correção do atualizador automático, separação dos logs de instalação e melhorias no diagnóstico de falhas."
+    "version":  "0.1.5",
+    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.5/LDesktop-Setup-0.1.5.exe",
+    "sha256":  "AA6B3FD5C7DF4B9A9FD43A6B44CAE5A90A1778FAA9698A8B64E41754BFC7F3DD",
+    "notes":  "Corrige incompatibilidade de microfone no Windows, adiciona captura via SoundDevice e melhora a estabilidade e sincronização do áudio."
 }
