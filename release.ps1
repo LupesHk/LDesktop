@@ -61,12 +61,56 @@ if ($ghCommand) {
     $gh = $ghFallback
 }
 
-$iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
-if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) {
-    $isccCommand = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    if (-not $isccCommand) { throw "Inno Setup 6 (ISCC.exe) não encontrado." }
-    $iscc = $isccCommand.Source
+# Localizar compilador do Inno Setup
+$isccCandidates = @(
+    (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+    (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
+    (Join-Path $env:ProgramFiles "Inno Setup 7\ISCC.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 7\ISCC.exe")
+)
+
+# Consultar também o PATH
+$isccFromPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+
+if ($isccFromPath) {
+    $isccCandidates = @($isccFromPath.Source) + $isccCandidates
 }
+
+# Consultar instalações registradas no Windows
+$registryKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+)
+
+$installedInno = @(
+    Get-ItemProperty $registryKeys -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.DisplayName -match "Inno Setup" -and
+            $_.InstallLocation
+        }
+)
+
+foreach ($installation in $installedInno) {
+    $isccCandidates += Join-Path $installation.InstallLocation "ISCC.exe"
+}
+
+$iscc = $isccCandidates |
+    Where-Object {
+        $_ -and (Test-Path -LiteralPath $_ -PathType Leaf)
+    } |
+    Select-Object -First 1
+
+if (-not $iscc) {
+    throw "Inno Setup não encontrado. Instale a versão 6 ou 7."
+}
+
+$isccCommand = [pscustomobject]@{
+    Source = $iscc
+}
+
+Write-Host "Inno Setup encontrado: $iscc" -ForegroundColor Green
 
 Write-Host "`n=== VERIFICAÇÕES INICIAIS ===" -ForegroundColor Cyan
 $branch = (& $git branch --show-current).Trim()
