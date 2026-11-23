@@ -190,6 +190,7 @@ def main():
     update_dir.mkdir(parents=True, exist_ok=True)
 
     log_path = update_dir / "updater.log"
+    installer_log_path = update_dir / "installer.log"
     backup_dir = update_dir / "rollback"
 
     logging.basicConfig(
@@ -237,8 +238,13 @@ def main():
             "/SUPPRESSMSGBOXES",
             "/NORESTART",
             "/CLOSEAPPLICATIONS",
-            f"/LOG={log_path}"
+            f"/LOG={installer_log_path}"
         ]
+
+        logging.info(
+            "Log do Inno Setup: %s",
+            installer_log_path,
+        )
 
         installation_started = True
 
@@ -249,9 +255,15 @@ def main():
             creationflags=CREATE_NO_WINDOW
         )
 
+        logging.info(
+            "Instalador finalizado. Código de saída: %s",
+            result.returncode,
+        )
+
         if result.returncode != 0:
             raise RuntimeError(
-                f"O instalador retornou código {result.returncode}."
+                f"O instalador retornou código {result.returncode}. "
+                f"Consulte: {installer_log_path}"
             )
 
         if not app_exe.exists():
