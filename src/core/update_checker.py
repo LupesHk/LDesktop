@@ -137,7 +137,7 @@ def check_for_update():
         ) from error
 
     try:
-        manifest = json.loads(content.decode("utf-8"))
+        manifest = json.loads(content.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise UpdateCheckError(
             "Manifesto de atualização inválido."
