@@ -1,6 +1,6 @@
-{
-  "version": "0.1.1",
-  "download_url": "https://github.com/LupesHk/LDesktop/releases/download/v0.1.1/LDesktop-Setup-0.1.1.exe",
-  "sha256": "7A5638B147ADA068A259F5A867F36E8A50EE7036FE251688DCE16295B1E726D5",
-  "notes": "Melhorias de estabilidade, inicialização e atualização automática."
+﻿{
+  "version": "0.1.2",
+  "download_url": "https://github.com/LupesHk/LDesktop/releases/download/v0.1.2/LDesktop-Setup-0.1.2.exe",
+  "sha256": "CA3C9ADE64BB8F63E0D8085EABC0514C35C4A195D0F4F9B72D5B99FD2179A5C3",
+  "notes": "Configuração de microfone, melhorias no buffer de replay e ajustes de estabilidade."
 }
