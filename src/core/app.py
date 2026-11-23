@@ -1,4 +1,3 @@
-
 import sys
 import signal
 import os
@@ -6,15 +5,15 @@ import shutil
 import ctypes
 import subprocess
 import traceback
-import traceback
 
 from pathlib import Path
 from ctypes import wintypes
+from core.paths import DATA_DIR, SAVED_DIR, ICON
 
 import keyboard
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QSize, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -57,7 +56,6 @@ from modules.device import get_device_token
 
 from core.update_config import APP_VERSION, UPDATE_CHECK_ON_STARTUP
 from core.update_checker import UpdateWorker, UpdateDownloadWorker
-from core.paths import DATA_DIR, SAVED_DIR
 
 
 def confirm_update_startup():
@@ -145,6 +143,7 @@ class LDesktop(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("L Desktop")
+        self.setWindowIcon(QIcon(str(ICON)))
         self.resize(1080, 700)
         self.setMinimumSize(850, 580)
 
@@ -200,7 +199,7 @@ class LDesktop(QMainWindow):
             }
 
             QFrame#brandMark {
-                background-color: #7657e8;
+                background-color: transparent;
                 border-radius: 11px;
             }
 
@@ -396,10 +395,12 @@ class LDesktop(QMainWindow):
         brand_mark_layout = QVBoxLayout(brand_mark)
         brand_mark_layout.setContentsMargins(0, 0, 0, 0)
 
-        brand_letter = QLabel("L")
-        brand_letter.setObjectName("brandLetter")
-        brand_letter.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        brand_mark_layout.addWidget(brand_letter)
+        brand_icon = QLabel()
+        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_icon.setPixmap(
+            QIcon(str(ICON)).pixmap(QSize(36, 36))
+        )
+        brand_mark_layout.addWidget(brand_icon)
 
         brand_text = QVBoxLayout()
         brand_text.setSpacing(1)
@@ -407,7 +408,7 @@ class LDesktop(QMainWindow):
         brand_title = QLabel("L Desktop")
         brand_title.setObjectName("brandTitle")
 
-        brand_subtitle = QLabel("COMPANION FOR WINDOWS")
+        brand_subtitle = QLabel("COMPANHIA NO WINDOWS")
         brand_subtitle.setObjectName("brandSubtitle")
 
         brand_text.addWidget(brand_title)
@@ -857,7 +858,6 @@ class LDesktop(QMainWindow):
                 "O Replay Buffer está pausado."
             )
             self.sidebar_status_label.setText("Buffer pausado")
-            self.replay_toggle_button.setText("Iniciar Buffer")
 
         settings = load_audio_settings()
         microphone_name = settings.get(
@@ -1157,11 +1157,7 @@ class LDesktop(QMainWindow):
 
         self.tray.setToolTip("L Desktop")
 
-        self.tray.setIcon(
-            QApplication.style().standardIcon(
-                QStyle.StandardPixmap.SP_ComputerIcon
-            )
-        )
+        self.tray.setIcon(QIcon(str(ICON)))
 
         menu = QMenu(self)
 
@@ -1457,6 +1453,9 @@ class LDesktop(QMainWindow):
             selected_id = settings.get("microphone_id")
             previous_name = settings.get("microphone_name")
 
+        if not previous_name:
+            previous_name = settings.get("microphone_name")
+
         self.microphone_combo.clear()
 
         self.microphone_names = {
@@ -1468,7 +1467,9 @@ class LDesktop(QMainWindow):
         try:
             default_info = get_default_microphone_info()
             default_label = (
-                f"Padrão do Windows — {default_info['name']}"
+                f"Padrão do Windows — "
+                f"{default_info['name']} "
+                f"({default_info['hostapi']})"
             )
         except Exception:
             default_label = "Padrão do Windows"
@@ -1481,11 +1482,14 @@ class LDesktop(QMainWindow):
             for device in devices:
                 device_id = device["id"]
                 device_name = device["name"]
+                hostapi = device["hostapi"]
                 channels = device["channels"]
+                samplerate = device["samplerate"]
 
                 label = (
-                    f"{device_name} "
-                    f"({channels} canais)"
+                    f"{device_name} — {hostapi} "
+                    f"({samplerate / 1000:g} kHz, "
+                    f"{channels} canais)"
                 )
 
                 self.microphone_combo.addItem(label, device_id)
@@ -1495,7 +1499,7 @@ class LDesktop(QMainWindow):
 
                 print(
                     f"[AUDIO CONFIG] Encontrado: {device_name} "
-                    f"[ID: {device_id}]"
+                    f"[API: {hostapi}, ID: {device_id}]"
                 )
 
         except Exception as error:
@@ -1505,8 +1509,33 @@ class LDesktop(QMainWindow):
                 f"Não foi possível listar os microfones: {error}"
             )
 
-        # Preserva uma escolha salva mesmo quando o dispositivo
-        # está temporariamente desconectado.
+        # Migra automaticamente IDs antigos do SoundCard.
+        if (
+            selected_id is not None
+            and selected_id not in self.microphone_available_ids
+            and previous_name
+        ):
+            candidates = [
+                device
+                for device in devices
+                if device["name"].casefold() == previous_name.casefold()
+            ] if "devices" in locals() else []
+
+            if candidates:
+                candidates.sort(
+                    key=lambda device: (
+                        0 if device["hostapi"] == "Windows WASAPI" else 1
+                    )
+                )
+
+                selected_id = candidates[0]["id"]
+
+                print(
+                    f"[AUDIO CONFIG] ID antigo migrado para: "
+                    f"{selected_id}"
+                )
+
+        # Preserva seleção, inclusive quando o dispositivo está ausente.
         if selected_id is not None:
             if selected_id not in self.microphone_available_ids:
                 name = (
@@ -1528,7 +1557,8 @@ class LDesktop(QMainWindow):
                 self.microphone_combo.setCurrentIndex(index)
 
         self.audio_test_status.setText(
-            f"{len(self.microphone_available_ids)} dispositivo(s) de entrada encontrado(s)."
+            f"{len(self.microphone_available_ids)} "
+            f"dispositivo(s) de entrada encontrado(s)."
         )
 
 
@@ -1704,9 +1734,18 @@ class LDesktop(QMainWindow):
 
 
 def main():
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "LupesHk.LDesktop.1.0"
+            )
+        except Exception as error:
+            print(f"[L DESKTOP] Aviso: AppUserModelID não definido: {error}")
+
     app = QApplication(sys.argv)
 
     app.setApplicationName("L Desktop")
+    app.setWindowIcon(QIcon(str(ICON)))
     app.setQuitOnLastWindowClosed(False)
 
     window = LDesktop()

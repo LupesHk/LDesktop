@@ -39,6 +39,9 @@ SAVED_DIR = REPLAY_DIR / "saved"
 LOG_DIR = DATA_DIR / "logs"
 FFMPEG_LOG = LOG_DIR / "ffmpeg.log"
 
+# Recursos visuais
+ASSETS_DIR = RESOURCE_DIR / "assets"
+ICON = ASSETS_DIR / "icon.png"
 
 def ensure_data_dirs():
     for directory in (

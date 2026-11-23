@@ -1,4 +1,3 @@
-
 #define MyAppName "L Desktop"
 #define MyAppVersion "0.1.4"
 #define MyAppPublisher "LupesHk"
@@ -18,6 +17,8 @@ OutputBaseFilename=LDesktop-Setup-{#MyAppVersion}
 
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\LDesktop.exe
+
+SetupIconFile=assets\icon.ico
 
 Compression=lzma2
 SolidCompression=yes
@@ -41,8 +42,8 @@ Source: "dist\LDesktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "dist\updater\LDesktopUpdater.exe"; DestDir: "{userappdata}\LDesktop\updater"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LDesktop.exe"
+Name: "{autodesktop}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LDesktop.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\LDesktop.exe"; Description: "Abrir L Desktop"; Flags: nowait postinstall skipifsilent

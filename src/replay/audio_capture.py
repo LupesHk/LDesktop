@@ -1,4 +1,3 @@
-
 import threading
 import time
 from collections import deque
@@ -6,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import soundcard as sc
+import sounddevice as sd
 import soundfile as sf
 
 from core.audio_config import (
@@ -45,69 +45,63 @@ class AudioCapture:
             self.system_chunks.clear()
             self.microphone_chunks.clear()
 
-        speaker = sc.default_speaker()
+        # Captura do áudio do sistema: mantém SoundCard.
+        try:
+            speaker = sc.default_speaker()
 
-        system_device = sc.get_microphone(
-            id=str(speaker.name),
-            include_loopback=True,
-        )
+            system_device = sc.get_microphone(
+                id=str(speaker.name),
+                include_loopback=True,
+            )
 
-        devices = [
-            (system_device, self.system_chunks, 2, "Sistema")
-        ]
+            system_thread = threading.Thread(
+                target=self._capture_loop,
+                args=(system_device, self.system_chunks, 2, "Sistema"),
+                daemon=True,
+                name="AudioCapture-Sistema",
+            )
 
+            self.threads.append(system_thread)
+            system_thread.start()
+
+        except Exception as error:
+            self.errors.append(f"Sistema: {error}")
+            print(f"[AUDIO] Falha ao iniciar áudio do sistema: {error}")
+
+        # Captura do microfone: utiliza SoundDevice.
         settings = load_audio_settings()
         selected_id = settings.get("microphone_id")
 
         try:
-            microphone_device = resolve_microphone(selected_id)
-
-            devices.append(
-                (
-                    microphone_device,
-                    self.microphone_chunks,
-                    1,
-                    "Microfone",
-                )
-            )
+            microphone = resolve_microphone(selected_id)
 
             print(
                 f"[AUDIO] Microfone selecionado: "
-                f"{microphone_device.name}"
+                f"{microphone['name']}"
+            )
+            print(
+                f"[AUDIO] API: {microphone['hostapi']} | "
+                f"ID: {microphone['id']}"
             )
 
-            print(
-                f"[AUDIO] ID do microfone: "
-                f"{microphone_device.id}"
+            microphone_thread = threading.Thread(
+                target=self._capture_microphone_loop,
+                args=(microphone,),
+                daemon=True,
+                name="AudioCapture-Microfone",
             )
+
+            self.threads.append(microphone_thread)
+            microphone_thread.start()
 
         except Exception as error:
             self.errors.append(f"Microfone indisponível: {error}")
-
             print(f"[AUDIO] Falha ao selecionar microfone: {error}")
 
-            if selected_id is None:
-                print(
-                    "[AUDIO] O microfone padrão do Windows "
-                    "não está disponível."
-                )
-
-            else:
-                print(
-                    "[AUDIO] O dispositivo salvo não foi encontrado. "
-                    "Escolha outro na configuração de áudio."
-                )
-
-        for device, buffer, channels, name in devices:
-            thread = threading.Thread(
-                target=self._capture_loop,
-                args=(device, buffer, channels, name),
-                daemon=True,
-                name=f"AudioCapture-{name}",
+        if not self.threads:
+            raise RuntimeError(
+                "Não foi possível iniciar nenhuma captura de áudio."
             )
-
-            self.threads.append(thread)
-            thread.start()
 
         print("[AUDIO] Captura de áudio iniciada.")
 
@@ -137,7 +131,7 @@ class AudioCapture:
                     if len(audio) == 0:
                         continue
 
-                    timestamp = time.monotonic()
+                    timestamp = time.monotonic() - (len(audio) / self.SAMPLE_RATE)
 
                     audio = np.asarray(
                         audio,
@@ -156,84 +150,132 @@ class AudioCapture:
             self.errors.append(f"{name}: {error}")
             print(f"[AUDIO] Erro em {name}: {error}")
 
+    def _capture_microphone_loop(self, microphone):
+        frames = int(self.SAMPLE_RATE * self.CHUNK_SECONDS)
+        blocksize = int(self.SAMPLE_RATE * self.BLOCKSIZE_SECONDS)
+
+        extra_settings = None
+
+        if microphone["hostapi"] == "Windows WASAPI":
+            extra_settings = sd.WasapiSettings(auto_convert=True)
+
+        try:
+            with sd.InputStream(
+                device=microphone["index"],
+                samplerate=self.SAMPLE_RATE,
+                channels=1,
+                dtype="float32",
+                blocksize=blocksize,
+                extra_settings=extra_settings,
+            ) as stream:
+
+                print(
+                    "[AUDIO] Microfone aberto e capturando: "
+                    f"{microphone['name']}"
+                )
+
+                while not self.stop_event.is_set():
+                    audio, overflowed = stream.read(frames)
+                    timestamp = time.monotonic() - (len(audio) / self.SAMPLE_RATE)
+
+                    if len(audio) == 0:
+                        continue
+
+                    if overflowed:
+                        print(
+                            "[AUDIO] Aviso: overflow na captura "
+                            "do microfone."
+                        )
+
+                    audio = np.asarray(
+                        audio,
+                        dtype=np.float32,
+                    )
+
+                    with self.lock:
+                        self.microphone_chunks.append(
+                            (timestamp, audio)
+                        )
+
+                        cutoff = timestamp - self.BUFFER_SECONDS
+
+                        while (
+                            self.microphone_chunks
+                            and self.microphone_chunks[0][0] < cutoff
+                        ):
+                            self.microphone_chunks.popleft()
+
+        except Exception as error:
+            self.errors.append(f"Microfone: {error}")
+            print(f"[AUDIO] Erro no microfone: {error}")
+
     def get_mixed_audio(self, duration=30, end_time=None):
         with self.lock:
             system_chunks = list(self.system_chunks)
             microphone_chunks = list(self.microphone_chunks)
 
         if not system_chunks:
-            raise RuntimeError(
-                "Ainda não existem dados suficientes de áudio do sistema."
-            )
+            raise RuntimeError("Nenhum áudio do sistema foi capturado.")
 
         if end_time is None:
-            end_time = system_chunks[-1][0]
+            system_end = (
+                system_chunks[-1][0]
+                + len(system_chunks[-1][1]) / self.SAMPLE_RATE
+            )
+            end_time = system_end
 
             if microphone_chunks:
-                end_time = min(
-                    end_time,
-                    microphone_chunks[-1][0],
+                microphone_end = (
+                    microphone_chunks[-1][0]
+                    + len(microphone_chunks[-1][1]) / self.SAMPLE_RATE
                 )
+                end_time = min(end_time, microphone_end)
 
         start_time = end_time - duration
         total_frames = int(duration * self.SAMPLE_RATE)
 
-        system_audio = np.zeros(
-            (total_frames, 2),
-            dtype=np.float32,
-        )
-
-        microphone_audio = np.zeros(
-            (total_frames, 2),
-            dtype=np.float32,
-        )
+        system_audio = np.zeros((total_frames, 2), dtype=np.float32)
+        microphone_audio = np.zeros((total_frames, 2), dtype=np.float32)
 
         def insert_chunks(chunks, destination, channels):
-            for timestamp, audio in chunks:
-                chunk_duration = len(audio) / self.SAMPLE_RATE
-                chunk_start = timestamp - chunk_duration
+            if not chunks:
+                return
 
-                offset = int(
-                    round(
-                        (chunk_start - start_time)
-                        * self.SAMPLE_RATE
-                    )
-                )
+            first_timestamp = chunks[0][0]
+            cursor = int(round(
+                (first_timestamp - start_time) * self.SAMPLE_RATE
+            ))
 
-                source_start = max(0, -offset)
-                target_start = max(0, offset)
+            for _, audio in chunks:
+                audio = np.asarray(audio, dtype=np.float32)
+
+                source_start = max(0, -cursor)
+                target_start = max(0, cursor)
 
                 available = min(
                     len(audio) - source_start,
-                    total_frames - target_start,
+                    total_frames - target_start
                 )
 
-                if available <= 0:
-                    continue
+                if available > 0:
+                    chunk = audio[
+                        source_start:source_start + available
+                    ]
 
-                chunk = audio[
-                    source_start:source_start + available
-                ]
+                    if channels == 1:
+                        chunk = np.repeat(chunk, 2, axis=1)
 
-                if channels == 1:
-                    chunk = np.repeat(chunk, 2, axis=1)
+                    destination[
+                        target_start:target_start + available
+                    ] = chunk
 
-                destination[
-                    target_start:target_start + available
-                ] = chunk
+                cursor += len(audio)
 
-        insert_chunks(
-            system_chunks,
-            system_audio,
-            2,
-        )
+                if cursor >= total_frames:
+                    break
 
-        if microphone_chunks:
-            insert_chunks(
-                microphone_chunks,
-                microphone_audio,
-                1,
-            )
+        insert_chunks(system_chunks, system_audio, 2)
+        insert_chunks(microphone_chunks, microphone_audio, 1)
 
         mixed = (
             system_audio * self.SYSTEM_VOLUME

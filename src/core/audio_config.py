@@ -1,18 +1,22 @@
 
 import json
 import math
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import soundcard as sc
+import sounddevice as sd
 
 from core.paths import DATA_DIR, LOG_DIR
-from datetime import datetime
 
 
 AUDIO_SETTINGS_FILE = DATA_DIR / "audio_settings.json"
-
 AUDIO_LOG_FILE = LOG_DIR / "audio.log"
+
+SAMPLE_RATE = 48000
+TEST_DURATION_SECONDS = 2
+TEST_CHUNK_SECONDS = 0.10
+BLOCKSIZE_SECONDS = 0.20
 
 
 def log_audio_error(context, error, traceback_text):
@@ -34,12 +38,7 @@ def log_audio_error(context, error, traceback_text):
             file.write("\n")
 
     except Exception as log_error:
-        print(f"[AUDIO LOG] Não foi possível registrar o erro: {log_error}")
-
-SAMPLE_RATE = 48000
-TEST_DURATION_SECONDS = 2
-TEST_CHUNK_SECONDS = 0.10
-BLOCKSIZE_SECONDS = 0.20
+        print(f"[AUDIO LOG] Erro ao registrar: {log_error}")
 
 
 def load_audio_settings():
@@ -109,63 +108,110 @@ def save_audio_settings(microphone_id, microphone_name):
     )
 
 
-def get_default_microphone_info():
-    microphone = sc.default_microphone()
+def _get_hostapi_names():
+    return [
+        str(hostapi["name"])
+        for hostapi in sd.query_hostapis()
+    ]
 
-    return {
-        "id": str(microphone.id),
-        "name": str(microphone.name),
-    }
+
+def _device_id(hostapi_name, device_name):
+    return f"{hostapi_name}::{device_name}"
 
 
 def list_microphones():
-    """Lista somente entradas de microfone, sem loopbacks."""
-    devices = sc.all_microphones(include_loopback=False)
+    """Lista dispositivos de entrada disponíveis no SoundDevice."""
+    devices = sd.query_devices()
+    hostapi_names = _get_hostapi_names()
 
     result = []
-    seen_ids = set()
 
-    for device in devices:
-        if getattr(device, "isloopback", False):
+    for index, device in enumerate(devices):
+        channels = int(device["max_input_channels"])
+
+        if channels <= 0:
             continue
 
-        device_id = str(device.id)
-
-        if device_id in seen_ids:
-            continue
-
-        seen_ids.add(device_id)
-
-        channels = device.channels
-
-        channel_count = (
-            channels
-            if isinstance(channels, int)
-            else len(channels)
-        )
+        hostapi_index = int(device["hostapi"])
+        hostapi_name = hostapi_names[hostapi_index]
+        device_name = str(device["name"])
 
         result.append({
-            "id": device_id,
-            "name": str(device.name),
-            "channels": channel_count,
+            "id": _device_id(hostapi_name, device_name),
+            "index": index,
+            "name": device_name,
+            "hostapi": hostapi_name,
+            "channels": channels,
+            "samplerate": float(device["default_samplerate"]),
         })
 
-    return sorted(
-        result,
-        key=lambda item: item["name"].casefold(),
+    # Prioriza WASAPI, mantendo as demais APIs como alternativas.
+    result.sort(
+        key=lambda item: (
+            0 if item["hostapi"] == "Windows WASAPI" else 1,
+            item["name"].casefold(),
+            item["hostapi"].casefold(),
+        )
     )
+
+    return result
+
+
+
+def get_default_microphone_info():
+    devices = list_microphones()
+
+    if not devices:
+        raise RuntimeError(
+            "Nenhum dispositivo de entrada foi encontrado."
+        )
+
+    default_name = None
+
+    try:
+        default_index = sd.default.device[0]
+
+        if default_index is not None and int(default_index) >= 0:
+            default_device = sd.query_devices(int(default_index))
+            default_name = str(default_device["name"])
+
+    except Exception:
+        pass
+
+    # Prioriza WASAPI correspondente ao microfone padrão do Windows.
+    if default_name:
+        for device in devices:
+            if (
+                device["hostapi"] == "Windows WASAPI"
+                and device["name"] == default_name
+            ):
+                return device
+
+    # Se não encontrar correspondência, prioriza qualquer WASAPI.
+    for device in devices:
+        if device["hostapi"] == "Windows WASAPI":
+            return device
+
+    return devices[0]
 
 
 def resolve_microphone(microphone_id=None):
-    """Resolve o dispositivo pelo ID exato ou usa o padrão do Windows."""
+    """Resolve o índice atual usando o identificador persistente."""
+    devices = list_microphones()
+
+    if not devices:
+        raise RuntimeError(
+            "Nenhum microfone disponível foi encontrado."
+        )
+
     if microphone_id is None:
-        return sc.default_microphone()
+        return get_default_microphone_info()
 
     requested_id = str(microphone_id)
 
-    for microphone in sc.all_microphones(include_loopback=False):
-        if str(microphone.id) == requested_id:
-            return microphone
+    for device in devices:
+        if device["id"] == requested_id:
+            return device
 
     raise RuntimeError(
         "O microfone selecionado não está disponível. "
@@ -173,9 +219,16 @@ def resolve_microphone(microphone_id=None):
     )
 
 
+def _get_input_stream_settings(device):
+    if device["hostapi"] == "Windows WASAPI":
+        return sd.WasapiSettings(auto_convert=True)
+
+    return None
+
+
 def test_microphone(microphone_id=None):
     """
-    Abre o dispositivo e captura amostras temporárias.
+    Testa o microfone com SoundDevice.
     Nenhum áudio do teste é salvo em disco.
     """
     microphone = resolve_microphone(microphone_id)
@@ -185,18 +238,21 @@ def test_microphone(microphone_id=None):
 
     chunks = []
 
-    with microphone.recorder(
+    with sd.InputStream(
+        device=microphone["index"],
         samplerate=SAMPLE_RATE,
         channels=1,
+        dtype="float32",
         blocksize=blocksize,
-    ) as recorder:
+        extra_settings=_get_input_stream_settings(microphone),
+    ) as stream:
 
         total_chunks = int(
             TEST_DURATION_SECONDS / TEST_CHUNK_SECONDS
         )
 
         for _ in range(total_chunks):
-            audio = recorder.record(numframes=frames)
+            audio, overflowed = stream.read(frames)
 
             if len(audio):
                 chunks.append(
@@ -218,7 +274,8 @@ def test_microphone(microphone_id=None):
     rms_dbfs = 20 * math.log10(max(rms, 1e-8))
 
     return {
-        "device_name": str(microphone.name),
+        "device_name": microphone["name"],
+        "hostapi": microphone["hostapi"],
         "peak": peak,
         "rms": rms,
         "peak_dbfs": peak_dbfs,

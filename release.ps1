@@ -224,6 +224,7 @@ try {
         "-m", "PyInstaller", "--clean", "--noconfirm",
         "--onefile", "--noconsole",
         "--name", "LDesktopUpdater",
+        "--icon", "assets\icon.ico",
         "--distpath", "dist\updater",
         "--workpath", "build\updater",
         ".\src\updater_main.py"

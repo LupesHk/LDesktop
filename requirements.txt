@@ -8,3 +8,4 @@ numpy
 SoundCard
 soundfile
 pyinstaller==6.22.3
+sounddevice==0.5.6
