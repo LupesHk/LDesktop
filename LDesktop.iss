@@ -1,6 +1,6 @@
 
 #define MyAppName "L Desktop"
-#define MyAppVersion "0.1.1"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "LupesHk"
 #define MyAppExeName "LDesktop.exe"
 

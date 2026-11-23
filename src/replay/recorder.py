@@ -1,5 +1,6 @@
 import subprocess
 import time
+import shutil
 
 from datetime import datetime
 
@@ -310,19 +311,43 @@ class ReplayRecorder:
 
         SAVED_DIR.mkdir(parents=True, exist_ok=True)
 
-        valid_segments = []
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        for segment in BUFFER_DIR.glob("segment_*.mp4"):
+        snapshot_dir = SAVED_DIR / f"snapshot_{timestamp}"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        segments = []
+
+        for source in sorted(BUFFER_DIR.glob("segment_*.mp4")):
+            snapshot = snapshot_dir / source.name
 
             try:
+                before = source.stat()
+
+                # Ignora segmentos muito recentes, possivelmente em gravação.
+                if time.time() - before.st_mtime < 1.5:
+                    continue
+
+                shutil.copy2(source, snapshot)
+
+                after = source.stat()
+
+                # Descarta cópias feitas enquanto o FFmpeg alterava o arquivo.
+                if (
+                    before.st_size != after.st_size
+                    or before.st_mtime_ns != after.st_mtime_ns
+                ):
+                    snapshot.unlink(missing_ok=True)
+                    continue
+
                 result = subprocess.run(
                     [
-                        str(ffprobe),
+                        str(FFPROBE),
                         "-v", "error",
                         "-show_entries", "format=duration",
                         "-of",
                         "default=noprint_wrappers=1:nokey=1",
-                        str(segment)
+                        str(snapshot)
                     ],
                     capture_output=True,
                     text=True,
@@ -331,29 +356,35 @@ class ReplayRecorder:
                 )
 
                 if result.returncode != 0:
+                    snapshot.unlink(missing_ok=True)
                     continue
 
                 duration = float(result.stdout.strip())
 
                 if 0.90 <= duration <= 1.10:
-                    valid_segments.append(segment)
+                    segments.append(snapshot)
+                else:
+                    snapshot.unlink(missing_ok=True)
 
             except (
                 ValueError,
                 subprocess.TimeoutExpired,
                 OSError
             ):
+                snapshot.unlink(missing_ok=True)
                 continue
 
-        valid_segments.sort(
+        segments.sort(
             key=lambda file: file.stat().st_mtime
         )
 
-        segments = valid_segments[-30:]
+        segments = segments[-30:]
 
         if not segments:
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
+
             raise RuntimeError(
-                "Nenhum segmento de vídeo disponível para salvar."
+                "Nenhum segmento íntegro disponível para salvar."
             )
 
         timestamp = datetime.now().strftime(
@@ -381,12 +412,16 @@ class ReplayRecorder:
             with open(
                 list_file,
                 "w",
-                encoding="utf-8"
+                encoding="ascii",
+                newline="\n"
             ) as file:
 
                 for segment in segments:
-                    path = segment.resolve().as_posix()
-                    file.write(f"file '{path}'\n")
+                    relative_path = segment.relative_to(
+                    SAVED_DIR
+                    ).as_posix()
+
+                    file.write(f"file '{relative_path}'\n")
 
             # Junta os segmentos de vídeo
             concat_command = [
@@ -465,6 +500,7 @@ class ReplayRecorder:
 
         finally:
             if replay_saved:
+                shutil.rmtree(snapshot_dir, ignore_errors=True)
                 for temp_file in (video_only, audio_file, list_file):
                     try:
                         temp_file.unlink(missing_ok=True)
