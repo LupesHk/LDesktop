@@ -6,10 +6,35 @@ from pathlib import Path
 import numpy as np
 import soundcard as sc
 
-from core.paths import DATA_DIR
+from core.paths import DATA_DIR, LOG_DIR
+from datetime import datetime
 
 
 AUDIO_SETTINGS_FILE = DATA_DIR / "audio_settings.json"
+
+AUDIO_LOG_FILE = LOG_DIR / "audio.log"
+
+
+def log_audio_error(context, error, traceback_text):
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().astimezone().isoformat(
+            timespec="seconds"
+        )
+
+        with AUDIO_LOG_FILE.open("a", encoding="utf-8") as file:
+            file.write(f"\n{'=' * 70}\n")
+            file.write(f"Data: {timestamp}\n")
+            file.write(f"Contexto: {context}\n")
+            file.write(
+                f"Erro: {type(error).__name__}: {error}\n\n"
+            )
+            file.write(traceback_text)
+            file.write("\n")
+
+    except Exception as log_error:
+        print(f"[AUDIO LOG] Não foi possível registrar o erro: {log_error}")
 
 SAMPLE_RATE = 48000
 TEST_DURATION_SECONDS = 2

@@ -6,6 +6,7 @@ import shutil
 import ctypes
 import subprocess
 import traceback
+import traceback
 
 from pathlib import Path
 from ctypes import wintypes
@@ -41,6 +42,8 @@ from core.audio_config import (
     load_audio_settings,
     save_audio_settings,
     test_microphone,
+    log_audio_error,
+    AUDIO_LOG_FILE,
 )
 
 from replay.recorder import ReplayRecorder
@@ -119,8 +122,19 @@ class AudioDeviceTestWorker(QThread):
             self.completed.emit(result)
 
         except Exception as error:
+            error_traceback = traceback.format_exc()
+
+            log_audio_error(
+                "Teste de microfone",
+                error,
+                error_traceback,
+            )
+
             self.completed.emit({
-                "error": str(error)
+                "error": str(error),
+                "error_type": type(error).__name__,
+                "traceback": error_traceback,
+                "log_path": str(AUDIO_LOG_FILE),
             })
 
 class LDesktop(QMainWindow):
@@ -1639,13 +1653,32 @@ class LDesktop(QMainWindow):
         self.microphone_test_button.setEnabled(True)
 
         if "error" in result:
+            error_type = result.get("error_type", "Erro")
             message = result["error"]
 
+            error_summary = f"{error_type}: {message}"
+
             self.audio_test_status.setText(
-                f"Falha ao abrir o microfone: {message}"
+                f"Falha ao abrir o microfone: {error_summary}"
             )
 
-            print(f"[AUDIO TEST] Falha: {message}")
+            print(f"[AUDIO TEST] {error_summary}")
+
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Icon.Critical)
+            dialog.setWindowTitle("Falha no teste do microfone")
+            dialog.setText(error_summary)
+
+            dialog.setInformativeText(
+                f"O diagnóstico completo foi salvo em:\n"
+                f"{result.get('log_path', AUDIO_LOG_FILE)}"
+            )
+
+            dialog.setDetailedText(
+                result.get("traceback", "Detalhes indisponíveis.")
+            )
+
+            dialog.exec()
             return
 
         peak = result["peak_dbfs"]
