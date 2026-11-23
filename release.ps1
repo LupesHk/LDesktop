@@ -1,9 +1,7 @@
-
-
-
 [CmdletBinding()]
 param(
-    [string]$Notes = ""
+    [string]$Notes = "",
+    [switch]$PreflightOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -96,4 +94,3 @@ if (-not $versionMatch.Success) { throw "Não foi possível ler APP_VERSION em s
 
 $currentVersion = "{0}.{1}.{2}" -f $versionMatch.Groups[1].Value, $versionMatch.Groups[2].Value, $versionMatch.Groups[3].Value
 $issVersionMatch = [regex]::Match($issOriginal, '(?m)^\s*#define\s+MyAppVersion\s+"([^"]+)"')
-if (-not $issVersionMatch.Success) { throw "Não foi possível localizar MyAppVersion em LDesktop.iss." }
