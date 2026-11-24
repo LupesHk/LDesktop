@@ -16,7 +16,7 @@ OutputDir=dist\installer
 OutputBaseFilename=LDesktop-Setup-{#MyAppVersion}
 
 UninstallDisplayName={#MyAppName}
-UninstallDisplayIcon={app}\LDesktop.exe
+UninstallDisplayIcon={app}\assets\icon.ico
 
 SetupIconFile=assets\icon.ico
 
@@ -42,8 +42,8 @@ Source: "dist\LDesktop\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "dist\updater\LDesktopUpdater.exe"; DestDir: "{userappdata}\LDesktop\updater"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LDesktop.exe"
-Name: "{autodesktop}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\LDesktop.exe"; Tasks: desktopicon
+Name: "{autoprograms}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"
+Name: "{autodesktop}\L Desktop"; Filename: "{app}\LDesktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\LDesktop.exe"; Description: "Abrir L Desktop"; Flags: nowait postinstall skipifsilent

@@ -8,6 +8,8 @@ from PySide6.QtGui import QGuiApplication
 
 from replay.audio_capture import AudioCapture
 from replay.process_guard import ProcessGuard
+from replay.library import ReplayLibrary, UNKNOWN_GAME
+from replay.game_detector import GameDetector
 
 from core.paths import (
     FFMPEG,
@@ -33,6 +35,8 @@ class ReplayRecorder:
         self.monitor = None
         self.audio_capture = AudioCapture()
         self.process_guard = None
+        self.library = ReplayLibrary()
+        self.game_detector = GameDetector()
 
     def detect_monitor(self):
         app = QGuiApplication.instance()
@@ -319,6 +323,32 @@ class ReplayRecorder:
                 "Replay Buffer não está ativo."
             )
 
+        # Identify the foreground game when F9 is requested.
+        detected_game = UNKNOWN_GAME
+
+        try:
+            detection = self.game_detector.detect_active_game()
+            detected_game = detection.get("game_name") or UNKNOWN_GAME
+
+            window_info = detection.get("window_info") or {}
+
+            print(
+                f"[REPLAY LIBRARY] Active window: "
+                f"{window_info.get('window_title') or 'Unknown'}"
+            )
+            print(
+                f"[REPLAY LIBRARY] Process: "
+                f"{window_info.get('process_name') or 'Unknown'}"
+            )
+            print(
+                f"[REPLAY LIBRARY] Identified game: {detected_game}"
+            )
+
+        except Exception as error:
+            print(
+                f"[REPLAY LIBRARY] Game detection failed: {error}"
+            )
+
         ffprobe = FFPROBE
 
         if not ffprobe.exists():
@@ -512,6 +542,19 @@ class ReplayRecorder:
 
             print(f"[REPLAY] Vídeo salvo: {output}")
             replay_saved = True
+
+            try:
+                output = self.library.organize_replay(
+                    output,
+                    game_name=detected_game,
+                )
+            except Exception as error:
+                print(
+                    f"[REPLAY LIBRARY] Falha na organiza??o: {error}"
+                )
+                print(
+                    f"[REPLAY LIBRARY] Arquivo mantido em: {output}"
+                )
 
             return output
 
