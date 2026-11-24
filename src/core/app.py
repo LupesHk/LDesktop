@@ -30,9 +30,11 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QFrame,
     QStackedWidget,
+    QListView,
     QListWidget,
     QListWidgetItem,
     QComboBox,
+    QLineEdit,
     QCheckBox,
     QScrollArea,
 )
@@ -48,6 +50,7 @@ from core.audio_config import (
 )
 
 from replay.recorder import ReplayRecorder
+from replay.game_profiles_dialog import GameProfilesDialog
 from modules.capture import (
     capture_screen,
     CaptureQueueWorker,
@@ -142,6 +145,35 @@ class AudioDeviceTestWorker(QThread):
                 "log_path": str(AUDIO_LOG_FILE),
             })
 
+class ReplayCardFrame(QFrame):
+    doubleClicked = Signal()
+
+    def mouseDoubleClickEvent(self, event):
+        self.doubleClicked.emit()
+        super().mouseDoubleClickEvent(event)
+
+
+class ReplayThumbnailWorker(QThread):
+
+    def __init__(self, library, filepaths, parent=None):
+        super().__init__(parent)
+        self.library = library
+        self.filepaths = list(filepaths)
+
+    def run(self):
+        for filepath in self.filepaths:
+            if self.isInterruptionRequested():
+                break
+
+            try:
+                self.library.ensure_thumbnail(filepath)
+            except Exception as error:
+                print(
+                    f"[REPLAY LIBRARY] Erro na miniatura "
+                    f"{filepath}: {error}"
+                )
+
+
 class LDesktop(QMainWindow):
     capture_requested = Signal()
     replay_requested = Signal()
@@ -167,6 +199,9 @@ class LDesktop(QMainWindow):
 
         self.pending_count = 0
         self.last_queue_message = "Fila de envios vazia."
+        self._legacy_replays_imported = False
+        self._thumbnail_backfill_started = False
+        self.thumbnail_worker = None
 
         self.capture_requested.connect(self.start_capture)
         self.replay_requested.connect(self.save_replay)
@@ -632,7 +667,7 @@ class LDesktop(QMainWindow):
     def build_replays_page(self):
         page, layout = self.page_container(
             "Replays",
-            "Consulte os vídeos salvos e acompanhe o envio automático."
+            "Sua biblioteca de momentos, organizada por jogo."
         )
 
         card = QFrame()
@@ -640,39 +675,90 @@ class LDesktop(QMainWindow):
 
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(17, 15, 17, 15)
-        card_layout.setSpacing(9)
+        card_layout.setSpacing(12)
 
-        title = QLabel("Histórico de replays")
+        header = QHBoxLayout()
+
+        title = QLabel("Minha biblioteca")
         title.setObjectName("cardTitle")
 
+        header.addWidget(title)
+        header.addStretch()
+
+        self.replay_game_filter = QComboBox()
+        self.replay_game_filter.setMinimumWidth(190)
+        self.replay_game_filter.addItem("Todos os jogos", None)
+
+        header.addWidget(self.replay_game_filter)
+
+        self.replay_search = QLineEdit()
+        self.replay_search.setPlaceholderText(
+            "Pesquisar replays..."
+        )
+        self.replay_search.setClearButtonEnabled(True)
+        self.replay_search.setMinimumWidth(230)
+
+        filters = QHBoxLayout()
+        filters.addWidget(self.replay_search, 1)
+        filters.addLayout(header)
+
+        card_layout.addLayout(filters)
+
         description = QLabel(
-            "Os arquivos originais permanecem no computador, "
-            "mesmo depois do envio ao Discord."
+            "Dê dois cliques em um replay para reproduzi-lo."
         )
         description.setObjectName("muted")
 
-        self.replay_list = QListWidget()
-        self.replay_list.itemDoubleClicked.connect(self.open_replay_item)
-
-        card_layout.addWidget(title)
         card_layout.addWidget(description)
-        card_layout.addWidget(self.replay_list, 1)
 
+        self.replay_favorites_only = QCheckBox(
+            "Mostrar somente favoritos"
+        )
+        card_layout.addWidget(self.replay_favorites_only)
+
+        self.replay_list = QListWidget()
+        self.replay_list.setViewMode(QListView.ViewMode.IconMode)
+        self.replay_list.setFlow(QListView.Flow.LeftToRight)
+        self.replay_list.setWrapping(True)
+        self.replay_list.setResizeMode(QListView.ResizeMode.Adjust)
+        self.replay_list.setMovement(QListView.Movement.Static)
+        self.replay_list.setIconSize(QSize(220, 124))
+        self.replay_list.setGridSize(QSize(250, 215))
+        self.replay_list.setSpacing(10)
+        self.replay_list.setWordWrap(True)
+        self.replay_list.setUniformItemSizes(True)
+        self.replay_list.setTextElideMode(
+            Qt.TextElideMode.ElideRight
+        )
+
+        self.replay_list.itemDoubleClicked.connect(
+            self.open_replay_item
+        )
+
+        card_layout.addWidget(self.replay_list, 1)
         layout.addWidget(card, 1)
 
         actions = QHBoxLayout()
 
-        refresh_button = QPushButton("Atualizar")
+        refresh_button = QPushButton("Atualizar biblioteca")
         refresh_button.clicked.connect(self.refresh_replay_history)
 
         folder_button = QPushButton("Abrir pasta")
         folder_button.clicked.connect(self.open_replay_folder)
 
-        actions.addWidget(refresh_button)
-        actions.addWidget(folder_button)
         actions.addStretch()
 
         layout.addLayout(actions)
+
+        self.replay_search.textChanged.connect(
+            self.refresh_replay_history
+        )
+        self.replay_game_filter.currentIndexChanged.connect(
+            self.refresh_replay_history
+        )
+        self.replay_favorites_only.toggled.connect(
+            self.refresh_replay_history
+        )
 
         return page
 
@@ -810,6 +896,34 @@ class LDesktop(QMainWindow):
         layout.addWidget(startup_card)
 
         self.refresh_microphone_devices()
+
+        # JOGOS E IDENTIFICACAO
+        games_card = QFrame()
+        games_card.setObjectName("card")
+
+        games_layout = QVBoxLayout(games_card)
+        games_layout.setContentsMargins(18, 17, 18, 17)
+        games_layout.setSpacing(9)
+
+        games_title = QLabel("JOGOS E IDENTIFICACAO")
+        games_title.setObjectName("cardTitle")
+
+        games_description = QLabel(
+            "Cadastre jogos, configure executaveis e "
+            "personalize o reconhecimento automatico."
+        )
+        games_description.setObjectName("muted")
+        games_description.setWordWrap(True)
+
+        games_button = QPushButton("Gerenciar jogos")
+        games_button.setObjectName("primaryButton")
+        games_button.clicked.connect(self.open_game_profiles)
+
+        games_layout.addWidget(games_title)
+        games_layout.addWidget(games_description)
+        games_layout.addWidget(games_button)
+
+        layout.addWidget(games_card)
 
         # ATALHOS
         shortcuts = QFrame()
@@ -996,56 +1110,419 @@ class LDesktop(QMainWindow):
                 else "Iniciar Replay Buffer"
             )
 
+    def set_replay_favorite(self, filepath, favorite):
+        try:
+            self.recorder.library.set_favorite(filepath, favorite)
+            self.refresh_replay_history()
+
+            print(
+                f"[REPLAY LIBRARY] Favorito atualizado: "
+                f"{Path(filepath).name} -> {favorite}"
+            )
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Favoritos",
+                str(error),
+            )
+
+    def delete_replay_from_library(self, filepath):
+        answer = QMessageBox.question(
+            self,
+            "Excluir replay",
+            (
+                "Deseja excluir permanentemente este replay?\\n\\n"
+                f"{Path(filepath).name}\\n\\n"
+                "O arquivo original e sua miniatura serao removidos. "
+                "Essa acao nao pode ser desfeita."
+            ),
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            self.recorder.library.delete_replay(filepath)
+            self.refresh_replay_history()
+            print("[REPLAY LIBRARY] Replay excluido.")
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Erro ao excluir replay",
+                str(error),
+            )
+
+    def show_replay_context_menu(
+        self,
+        filepath,
+        is_favorite,
+        global_position,
+    ):
+        menu = QMenu(self)
+
+        favorite_action = menu.addAction(
+            "Desfavoritar" if is_favorite else "Favoritar"
+        )
+
+        menu.addSeparator()
+        delete_action = menu.addAction("Excluir")
+
+        selected = menu.exec(global_position)
+
+        if selected == favorite_action:
+            self.set_replay_favorite(
+                filepath,
+                not is_favorite,
+            )
+
+        elif selected == delete_action:
+            self.delete_replay_from_library(filepath)
+
+    def create_replay_card(
+        self,
+        filepath,
+        game_name,
+        date_label,
+        size_mb,
+        thumbnail,
+        is_favorite,
+    ):
+        card = ReplayCardFrame(self)
+        card.setObjectName("replayCard")
+        card.setFixedSize(238, 205)
+        card.setToolTip(str(filepath))
+        card.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+
+        card.customContextMenuRequested.connect(
+            lambda point, widget=card,
+                   item_path=str(filepath), favorite=is_favorite:
+                self.show_replay_context_menu(
+                    item_path,
+                    favorite,
+                    widget.mapToGlobal(point),
+                )
+        )
+
+        card.setStyleSheet("""
+            QFrame#replayCard {
+                background-color: #191925;
+                border: 1px solid #303044;
+                border-radius: 10px;
+            }
+            QFrame#replayCard:hover {
+                border: 1px solid #7657e8;
+                background-color: #20202f;
+            }
+            QLabel#replayGameLabel {
+                color: #e7e2fa;
+                font-size: 12px;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+            }
+            QLabel#replayMetadataLabel {
+                color: #9291a8;
+                font-size: 10px;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(5)
+
+        preview_container = QWidget(card)
+        preview_layout = QGridLayout(preview_container)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+
+        preview = QLabel()
+        preview.setFixedSize(220, 124)
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setStyleSheet("""
+            QLabel {
+                background-color: #101018;
+                color: #9291a8;
+                border-radius: 7px;
+                border: none;
+            }
+        """)
+        preview.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+
+        if thumbnail and Path(thumbnail).is_file():
+            preview_icon = QIcon(str(thumbnail))
+            pixmap = preview_icon.pixmap(QSize(220, 124))
+
+            if not pixmap.isNull():
+                preview.setPixmap(pixmap)
+            else:
+                preview.setText("Previa indisponivel")
+        else:
+            preview.setText("Previa indisponivel")
+
+        preview_layout.addWidget(preview, 0, 0)
+
+        preview_container.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+
+        preview_container.customContextMenuRequested.connect(
+            lambda point, widget=preview_container,
+                   item_path=str(filepath), favorite=is_favorite:
+                self.show_replay_context_menu(
+                    item_path,
+                    favorite,
+                    widget.mapToGlobal(point),
+                )
+        )
+
+        layout.addWidget(
+            preview_container,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+
+        game_label = QLabel(game_name)
+        game_label.setObjectName("replayGameLabel")
+        game_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+
+        metadata_label = QLabel(
+            f"{date_label}\n{size_mb:.2f} MiB"
+        )
+        metadata_label.setObjectName("replayMetadataLabel")
+        metadata_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+
+        layout.addWidget(game_label)
+        layout.addWidget(metadata_label)
+
+        return card
+
     def refresh_replay_history(self):
         if not hasattr(self, "replay_list"):
             return
 
         self.replay_list.clear()
-        SAVED_DIR.mkdir(parents=True, exist_ok=True)
 
-        files = sorted(
-            SAVED_DIR.glob("replay_*.mp4"),
-            key=lambda item: item.stat().st_mtime,
-            reverse=True,
-        )
+        try:
+            library = self.recorder.library
 
-        for filepath in files[:100]:
+            if not self._legacy_replays_imported:
+                imported = library.import_legacy_replays()
+                self._legacy_replays_imported = True
+
+                if imported:
+                    print(
+                        f"[REPLAY LIBRARY] "
+                        f"{imported} replay(s) antigo(s) catalogado(s)."
+                    )
+
+            all_records = library.list_replays(limit=500)
+            games = library.list_games()
+
+        except Exception as error:
+            print(
+                f"[REPLAY LIBRARY] Erro ao consultar catalogo: {error}"
+            )
+            return
+
+        # Atualiza o filtro sem perder a sele??o atual.
+        selected_game = self.replay_game_filter.currentData()
+
+        self.replay_game_filter.blockSignals(True)
+        self.replay_game_filter.clear()
+        self.replay_game_filter.addItem("Todos os jogos", None)
+
+        for game in games:
+            name = game["game_name"]
+            count = game["replay_count"]
+
+            self.replay_game_filter.addItem(
+                f"{name} ({count})",
+                name,
+            )
+
+        selected_index = self.replay_game_filter.findData(selected_game)
+
+        if selected_index >= 0:
+            self.replay_game_filter.setCurrentIndex(selected_index)
+
+        self.replay_game_filter.blockSignals(False)
+
+        selected_game = self.replay_game_filter.currentData()
+        search = self.replay_search.text().strip().casefold()
+
+        records = []
+
+        for record in all_records:
+            filepath = Path(record["file_path"])
+
+            if selected_game and record["game_name"] != selected_game:
+                continue
+
+            if (
+                self.replay_favorites_only.isChecked()
+                and not record.get("is_favorite")
+            ):
+                continue
+
+            searchable = " ".join((
+                record.get("title") or "",
+                record.get("file_name") or "",
+                record.get("game_name") or "",
+            )).casefold()
+
+            if search and search not in searchable:
+                continue
+
+            records.append(record)
+
+        visible_replays = []
+
+        from datetime import datetime
+
+        for record in records:
             try:
-                size_mb = filepath.stat().st_size / (1024 * 1024)
+                filepath = Path(record["file_path"])
 
-                modified = filepath.stat().st_mtime
-                from datetime import datetime
+                if not filepath.is_file():
+                    continue
+
+                metadata = filepath.stat()
+                size_mb = metadata.st_size / (1024 * 1024)
+
                 date_label = datetime.fromtimestamp(
-                    modified
-                ).strftime("%d/%m/%Y às %H:%M")
+                    record["captured_at"]
+                ).strftime("%d/%m/%Y %H:%M")
 
-                item = QListWidgetItem(
-                    f"{filepath.name}\n"
-                    f"{date_label}  •  {size_mb:.2f} MiB"
+                game_name = record["game_name"]
+                title = record["title"] or filepath.stem
+
+                thumbnail_value = record.get("thumbnail_path")
+                thumbnail = (
+                    Path(thumbnail_value)
+                    if thumbnail_value
+                    else None
                 )
+
+                if thumbnail and thumbnail.is_file():
+                    icon = QIcon(str(thumbnail))
+                else:
+                    icon = self.style().standardIcon(
+                        QStyle.StandardPixmap.SP_MediaPlay
+                    )
+
+                is_favorite = bool(record.get("is_favorite"))
+                display_game = (
+                    f"? {game_name}" if is_favorite else game_name
+                )
+
+                is_favorite = bool(record.get("is_favorite"))
+
+                item = QListWidgetItem()
+                item.setSizeHint(QSize(250, 215))
 
                 item.setData(
                     Qt.ItemDataRole.UserRole,
                     str(filepath)
                 )
+                item.setData(
+                    Qt.ItemDataRole.UserRole + 1,
+                    is_favorite
+                )
 
                 self.replay_list.addItem(item)
 
-            except OSError as error:
-                print(
-                    f"[L DESKTOP] Erro ao listar {filepath.name}: {error}"
+                card = self.create_replay_card(
+                    filepath=filepath,
+                    game_name=game_name,
+                    date_label=date_label,
+                    size_mb=size_mb,
+                    thumbnail=thumbnail,
+                    is_favorite=is_favorite,
                 )
 
-        if files:
-            latest = files[0]
+                card.doubleClicked.connect(
+                    lambda item_path=str(filepath):
+                        self.open_replay_path(item_path)
+                )
+
+                self.replay_list.setItemWidget(item, card)
+
+                visible_replays.append((filepath, metadata))
+
+            except (OSError, KeyError, TypeError, ValueError) as error:
+                print(
+                    f"[REPLAY LIBRARY] Erro ao listar registro: {error}"
+                )
+
+        if visible_replays:
+            latest, metadata = visible_replays[0]
+
             self.last_replay_label.setText(
-                f"{latest.name}  •  "
-                f"{latest.stat().st_size / (1024 * 1024):.2f} MiB"
+                f"{latest.name}  |  "
+                f"{metadata.st_size / (1024 * 1024):.2f} MiB"
             )
         else:
             self.last_replay_label.setText(
-                "Nenhum replay salvo ainda."
+                "Nenhum replay encontrado."
             )
+
+        # Backfill limitado para n?o processar toda a biblioteca de uma vez.
+        # A execu??o acontece em uma thread separada.
+        if not self._thumbnail_backfill_started:
+            missing = []
+
+            for record in all_records:
+                thumbnail_value = record.get("thumbnail_path")
+                thumbnail = (
+                    Path(thumbnail_value)
+                    if thumbnail_value
+                    else None
+                )
+
+                if (
+                    not thumbnail
+                    or not thumbnail.is_file()
+                ):
+                    filepath = Path(record["file_path"])
+
+                    if filepath.is_file():
+                        missing.append(filepath)
+
+                if len(missing) >= 5:
+                    break
+
+            if missing:
+                self._thumbnail_backfill_started = True
+
+                self.thumbnail_worker = ReplayThumbnailWorker(
+                    library,
+                    missing,
+                    self,
+                )
+
+                self.thumbnail_worker.finished.connect(
+                    self.refresh_replay_history
+                )
+
+                self.thumbnail_worker.start()
+
 
     def on_capture_queue_status(self, message):
         print(message)
@@ -1247,15 +1724,33 @@ class LDesktop(QMainWindow):
             QUrl.fromLocalFile(str(DATA_DIR))
         )
 
-    def open_replay_item(self, item):
-        filepath = item.data(Qt.ItemDataRole.UserRole)
+    def open_replay_path(self, filepath):
+        filepath = Path(filepath)
 
-        if not filepath:
+        if not filepath.is_file():
+            QMessageBox.warning(
+                self,
+                "Replay nao encontrado",
+                str(filepath),
+            )
             return
 
         QDesktopServices.openUrl(
-            QUrl.fromLocalFile(filepath)
+            QUrl.fromLocalFile(str(filepath))
         )
+
+    def open_replay_item(self, item):
+        filepath = item.data(Qt.ItemDataRole.UserRole)
+
+        if filepath:
+            self.open_replay_path(filepath)
+
+    def open_game_profiles(self):
+        dialog = GameProfilesDialog(
+            self.recorder.game_detector,
+            self,
+        )
+        dialog.exec()
 
     def open_link_window(self):
         window = LinkWindow(self)
