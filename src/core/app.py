@@ -33,6 +33,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QComboBox,
+    QCheckBox,
+    QScrollArea,
 )
 
 from core.audio_config import (
@@ -56,6 +58,11 @@ from modules.device import get_device_token
 
 from core.update_config import APP_VERSION, UPDATE_CHECK_ON_STARTUP
 from core.update_checker import UpdateWorker, UpdateDownloadWorker
+from core.startup import (
+    is_windows_startup_enabled,
+    set_windows_startup,
+    ensure_default_windows_startup,
+)
 
 
 def confirm_update_startup():
@@ -153,6 +160,7 @@ class LDesktop(QMainWindow):
         self.capture_queue_worker = None
         self.update_worker = None
         self.download_worker = None
+        self.notified_update_versions = set()
 
         self.hotkey_id = None
         self.replay_hotkey_id = None
@@ -163,6 +171,12 @@ class LDesktop(QMainWindow):
         self.capture_requested.connect(self.start_capture)
         self.replay_requested.connect(self.save_replay)
         self.audio_test_worker = None
+
+        try:
+            if ensure_default_windows_startup():
+                print("[STARTUP] Inicializa??o com Windows ativada por padr?o.")
+        except Exception as error:
+            print(f"[STARTUP] N?o foi poss?vel configurar a inicializa??o autom?tica: {error}")
 
         self.setup_style()
         self.setup_ui()
@@ -670,6 +684,38 @@ class LDesktop(QMainWindow):
         )
 
         # ÁUDIO
+        # CONFIGURA??ES COM ROLAGEM VERTICAL
+        scroll_area = QScrollArea()
+        scroll_area.setObjectName("settingsScrollArea")
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.viewport().setObjectName("settingsScrollViewport")
+        scroll_area.setStyleSheet("""
+            QScrollArea#settingsScrollArea {
+                background-color: #11111a;
+                border: none;
+            }
+            QWidget#settingsScrollViewport {
+                background-color: #11111a;
+            }
+            QWidget#settingsScrollContent {
+                background-color: #11111a;
+            }
+        """)
+        scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        content = QWidget()
+        content.setObjectName("settingsScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(17)
+
+        scroll_area.setWidget(content)
+        layout.addWidget(scroll_area, 1)
+        layout = content_layout
+
         audio_card = QFrame()
         audio_card.setObjectName("card")
 
@@ -729,6 +775,39 @@ class LDesktop(QMainWindow):
         audio_layout.addWidget(self.audio_test_status)
 
         layout.addWidget(audio_card)
+
+        startup_card = QFrame()
+        startup_card.setObjectName("card")
+
+        startup_layout = QVBoxLayout(startup_card)
+        startup_layout.setContentsMargins(18, 17, 18, 17)
+        startup_layout.setSpacing(9)
+
+        startup_title = QLabel("INICIALIZAÇÃO DO WINDOWS")
+        startup_title.setObjectName("cardTitle")
+
+        self.startup_checkbox = QCheckBox(
+            "Iniciar L Desktop com o Windows"
+        )
+        self.startup_checkbox.setChecked(
+            is_windows_startup_enabled()
+        )
+        self.startup_checkbox.toggled.connect(
+            self.on_startup_toggled
+        )
+
+        startup_description = QLabel(
+            "O aplicativo iniciará em segundo plano, "
+            "disponível na bandeja do Windows."
+        )
+        startup_description.setObjectName("muted")
+        startup_description.setWordWrap(True)
+
+        startup_layout.addWidget(startup_title)
+        startup_layout.addWidget(self.startup_checkbox)
+        startup_layout.addWidget(startup_description)
+
+        layout.addWidget(startup_card)
 
         self.refresh_microphone_devices()
 
@@ -1021,8 +1100,43 @@ class LDesktop(QMainWindow):
             print(f"[L DESKTOP] Erro ao iniciar Replay Buffer: {error}")
             traceback.print_exc()
 
+    def on_startup_toggled(self, enabled):
+        try:
+            set_windows_startup(enabled)
+
+            state = "ativada" if enabled else "desativada"
+            print(
+                f"[STARTUP] Inicializa??o com Windows {state}."
+            )
+
+        except Exception as error:
+            print(f"[STARTUP] Erro ao alterar configura??o: {error}")
+
+            self.startup_checkbox.blockSignals(True)
+            self.startup_checkbox.setChecked(not enabled)
+            self.startup_checkbox.blockSignals(False)
+
+            QMessageBox.warning(
+                self,
+                "Inicializa??o do Windows",
+                f"N?o foi poss?vel alterar a configura??o:\n\n{error}",
+            )
+
     def start_update_checker(self):
         if not UPDATE_CHECK_ON_STARTUP:
+            return
+
+        # Consulta imediata e repeti??o a cada 15 minutos.
+        if not hasattr(self, "update_check_timer"):
+            self.update_check_timer = QTimer(self)
+            self.update_check_timer.setInterval(15 * 60 * 1000)
+            self.update_check_timer.timeout.connect(
+                self.start_update_checker
+            )
+            self.update_check_timer.start()
+
+        # Evita consultas simult?neas.
+        if self.update_worker and self.update_worker.isRunning():
             return
 
         self.update_worker = UpdateWorker(self)
@@ -1226,6 +1340,15 @@ class LDesktop(QMainWindow):
     # ---------------------------------------------------------
 
     def on_update_available(self, update):
+        version = getattr(update, "version", None)
+
+        # N?o repetir o aviso da mesma vers?o nesta sess?o.
+        if version and version in self.notified_update_versions:
+            return
+
+        if version:
+            self.notified_update_versions.add(version)
+
         if not getattr(sys, "frozen", False):
             print(
                 f"[UPDATE] Versão disponível: {update.version}. "
@@ -1378,6 +1501,9 @@ class LDesktop(QMainWindow):
 
     def cleanup(self):
         print("[L DESKTOP] Encerrando...")
+
+        if hasattr(self, "update_check_timer"):
+            self.update_check_timer.stop()
 
         if hasattr(self, "status_timer"):
             self.status_timer.stop()
@@ -1749,7 +1875,11 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     window = LDesktop()
-    window.show()
+
+    if "--background" in sys.argv[1:]:
+        print("[L DESKTOP] Iniciado em segundo plano na bandeja.")
+    else:
+        window.show()
 
     QTimer.singleShot(2000, confirm_update_startup)
 

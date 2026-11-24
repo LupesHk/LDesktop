@@ -48,13 +48,25 @@ class ReplayRecorder:
             raise RuntimeError("Monitor principal não encontrado.")
 
         geometry = screen.geometry()
+        scale_factor = float(screen.devicePixelRatio() or 1.0)
+
+        # No Windows, o Qt mant?m a posi??o do monitor
+        # em coordenadas nativas; somente as dimens?es
+        # precisam da convers?o pelo DPR.
+        physical_x = geometry.x()
+        physical_y = geometry.y()
+        physical_width = round(geometry.width() * scale_factor)
+        physical_height = round(geometry.height() * scale_factor)
 
         self.monitor = {
             "name": screen.name(),
-            "x": geometry.x(),
-            "y": geometry.y(),
-            "width": geometry.width(),
-            "height": geometry.height()
+            "x": physical_x,
+            "y": physical_y,
+            "width": physical_width,
+            "height": physical_height,
+            "logical_width": geometry.width(),
+            "logical_height": geometry.height(),
+            "scale_factor": scale_factor,
         }
 
         return self.monitor
@@ -246,7 +258,12 @@ class ReplayRecorder:
 
         print("Replay Buffer iniciado.")
         print(f"Monitor: {monitor['name']}")
-        print(f"Resolução: {width}x{height}")
+        print(
+            f"Resolução lógica: "
+            f"{monitor['logical_width']}x{monitor['logical_height']}"
+        )
+        print(f"Escala DPI: {monitor['scale_factor']}")
+        print(f"Resolução física: {width}x{height}")
         print(f"Codificador: {encoder}")
 
         return True
