@@ -58,10 +58,17 @@ class LiveFriendCard(QFrame):
         self.discord_label = QLabel("Discord: offline")
         self.discord_label.setObjectName("liveFriendDiscord")
 
+        self.audience_label = QLabel("")
+        self.audience_label.setObjectName("liveFriendAudience")
+        self.audience_label.setWordWrap(True)
+        self.audience_label.setStyleSheet(
+            "color: #B8A9EF; font-size: 10px;"
+        )
+        self.audience_label.setVisible(False)
         info_layout.addWidget(self.name_label)
         info_layout.addWidget(self.username_label)
         info_layout.addWidget(self.discord_label)
-
+        info_layout.addWidget(self.audience_label)
         layout.addLayout(info_layout, 1)
 
         self.status_label = QLabel("L Desktop fechado")
@@ -120,6 +127,49 @@ class LiveFriendCard(QFrame):
             f"Discord: {discord_labels.get(discord_status, discord_status)}"
         )
 
+        viewers = friend.get("liveViewers") or []
+        viewers_available = friend.get("liveViewersAvailable", True)
+
+        if live_streaming:
+            if not viewers_available:
+                audience_text = "Espectadores indisponíveis"
+            else:
+                viewer_names = []
+
+                if isinstance(viewers, list):
+                    for viewer in viewers:
+                        if isinstance(viewer, dict):
+                            viewer_name = str(
+                                viewer.get("name") or ""
+                            ).strip()
+                        else:
+                            viewer_name = str(viewer).strip()
+
+                        if viewer_name and viewer_name not in viewer_names:
+                            viewer_names.append(viewer_name)
+
+                viewer_count = friend.get("liveViewerCount")
+
+                try:
+                    viewer_count = int(viewer_count)
+                except (TypeError, ValueError):
+                    viewer_count = len(viewer_names)
+
+                if viewer_names:
+                    audience_text = (
+                        f"Assistindo ({viewer_count}): "
+                        f"{', '.join(viewer_names)}"
+                    )
+                elif viewer_count > 0:
+                    audience_text = f"Assistindo ({viewer_count})"
+                else:
+                    audience_text = "Ninguém assistindo"
+
+            self.audience_label.setText(audience_text)
+            self.audience_label.setVisible(True)
+        else:
+            self.audience_label.clear()
+            self.audience_label.setVisible(False)
         if live_online:
             self.status_label.setText("Online")
             self.status_label.setStyleSheet(

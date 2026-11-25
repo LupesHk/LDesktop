@@ -15,7 +15,7 @@ class LiveService(QThread):
     friends_updated = Signal(object)
 
     HEARTBEAT_INTERVAL = 8
-    FRIENDS_INTERVAL = 8
+    FRIENDS_INTERVAL = 2
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,6 +72,7 @@ class LiveService(QThread):
         session = requests.Session()
 
         current_token = None
+        next_heartbeat = 0
         next_friends_update = 0
 
         print("[LIVE] Serviço iniciado.")
@@ -82,12 +83,12 @@ class LiveService(QThread):
                 try:
                     token = get_device_token()
 
-                    # Detecta vinculação ou troca de dispositivo.
                     if token != current_token:
                         if current_token:
                             self._disconnect(session, current_token)
 
                         current_token = token
+                        next_heartbeat = 0
                         next_friends_update = 0
 
                     if not current_token:
@@ -95,8 +96,13 @@ class LiveService(QThread):
                             False,
                             "Dispositivo não vinculado."
                         )
+                        self._stop_event.wait(0.25)
+                        continue
 
-                    else:
+                    now = time.monotonic()
+
+                    # Heartbeat mantém a presença ativa.
+                    if now >= next_heartbeat:
                         try:
                             response = session.post(
                                 f"{self.base_url}/live/heartbeat",
@@ -122,36 +128,47 @@ class LiveService(QThread):
                                 "Presença ativa."
                             )
 
-                            now = time.monotonic()
-
-                            if now >= next_friends_update:
-                                self._refresh_friends(
-                                    session,
-                                    current_token,
-                                )
-
-                                next_friends_update = (
-                                    time.monotonic()
-                                    + self.FRIENDS_INTERVAL
-                                )
-
                         except Exception as error:
                             self._set_connection(
                                 False,
                                 f"API indisponível: {error}"
                             )
+                            print(f"[LIVE] Erro de heartbeat: {error}")
 
-                            print(f"[LIVE] Erro de conexão: {error}")
+                        next_heartbeat = (
+                            time.monotonic() + self.HEARTBEAT_INTERVAL
+                        )
+
+                    # Consulta de amigos tem ciclo independente.
+                    now = time.monotonic()
+
+                    if now >= next_friends_update:
+                        self._refresh_friends(
+                            session,
+                            current_token,
+                        )
+
+                        next_friends_update = (
+                            time.monotonic() + self.FRIENDS_INTERVAL
+                        )
+
+                    # Acorda periodicamente para verificar os dois prazos.
+                    remaining = min(
+                        next_heartbeat,
+                        next_friends_update
+                    ) - time.monotonic()
+
+                    self._stop_event.wait(
+                        max(0.05, min(0.25, remaining))
+                    )
 
                 except Exception as error:
                     self._set_connection(
                         False,
                         "Erro ao verificar dispositivo."
                     )
-
                     print(f"[LIVE] Erro interno: {error}")
-
-                self._stop_event.wait(self.HEARTBEAT_INTERVAL)
+                    self._stop_event.wait(0.25)
 
         finally:
             if current_token:

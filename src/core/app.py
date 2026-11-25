@@ -200,6 +200,105 @@ class ReplayThumbnailWorker(QThread):
                 )
 
 
+class LiveToast(QFrame):
+    watch_requested = Signal(str, str)
+    dismissed = Signal(object)
+
+    def __init__(self, user_id, display_name):
+        super().__init__(
+            None,
+            Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+
+        self.user_id = str(user_id)
+        self.display_name = str(display_name)
+        self._dismissed = False
+
+        self.setObjectName("liveDesktopToast")
+        self.setFixedSize(340, 132)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setStyleSheet("""
+            QFrame#liveDesktopToast {
+                background-color: #211b35;
+                border: 1px solid #7654b8;
+                border-radius: 12px;
+            }
+            QLabel {
+                color: #ffffff;
+                background: transparent;
+                border: none;
+            }
+            QPushButton {
+                color: white;
+                background-color: #7046b8;
+                border: none;
+                border-radius: 7px;
+                padding: 7px 13px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #875bd2;
+            }
+            QPushButton#toastClose {
+                background: transparent;
+                color: #bdb5cc;
+                font-size: 17px;
+                padding: 2px 7px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 11, 15, 12)
+        layout.setSpacing(7)
+
+        top = QHBoxLayout()
+        status = QLabel("• AO VIVO")
+        status.setStyleSheet("color: #c39aff; font-weight: 700;")
+
+        close_button = QPushButton("❌")
+        close_button.setObjectName("toastClose")
+        close_button.setFixedSize(28, 26)
+        close_button.clicked.connect(self.dismiss)
+
+        top.addWidget(status)
+        top.addStretch()
+        top.addWidget(close_button)
+        layout.addLayout(top)
+
+        title = QLabel(f"{self.display_name} está ao vivo")
+        title.setStyleSheet("font-size: 14px; font-weight: 700;")
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        bottom = QHBoxLayout()
+        description = QLabel("Começou a compartilhar a tela.")
+        description.setStyleSheet("color: #c5bfd2; font-size: 11px;")
+
+        watch_button = QPushButton("Assistir")
+        watch_button.clicked.connect(self.watch)
+
+        bottom.addWidget(description, 1)
+        bottom.addWidget(watch_button)
+        layout.addLayout(bottom)
+
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.dismiss)
+        self.timer.start(10000)
+
+    def watch(self):
+        self.watch_requested.emit(self.user_id, self.display_name)
+        self.dismiss()
+
+    def dismiss(self):
+        if self._dismissed:
+            return
+
+        self._dismissed = True
+        self.timer.stop()
+        self.dismissed.emit(self)
+
+
 class LDesktop(QMainWindow):
     capture_requested = Signal()
     replay_requested = Signal()
@@ -239,15 +338,17 @@ class LDesktop(QMainWindow):
 
         try:
             if ensure_default_windows_startup():
-                print("[STARTUP] Inicializa??o com Windows ativada por padr?o.")
+                print("[STARTUP] Inicialização com Windows ativada por padrão.")
         except Exception as error:
-            print(f"[STARTUP] N?o foi poss?vel configurar a inicializa??o autom?tica: {error}")
+            print(f"[STARTUP] Não foi possível configurar a inicialização automática: {error}")
 
         self.setup_style()
         self.live_publisher = None
         self.setup_ui()
         self.setup_tray()
         self.live_friends = []
+        self._live_stream_states = None
+        self._live_toasts = []
 
         self.live_service = LiveService(self)
 
@@ -470,8 +571,8 @@ class LDesktop(QMainWindow):
 
     def build_overview_page(self):
         page, layout = self.page_container(
-            "Vis?o geral",
-            "Seus momentos, ?udio e conex?o em um s? lugar."
+            "Visão geral",
+            "",
         )
 
         # Destaque principal: a??o que interessa ao usu?rio.
@@ -539,9 +640,9 @@ class LDesktop(QMainWindow):
 
         audio_card, self.audio_status_label, self.audio_detail_label = (
             self.create_card(
-                "?udio",
+                "Áudio",
                 "Verificando",
-                "Estado da captura de ?udio."
+                "Estado da captura de áudio."
             )
         )
 
@@ -549,13 +650,13 @@ class LDesktop(QMainWindow):
             self.create_card(
                 "Discord",
                 "Verificando",
-                "Estado da conex?o do dispositivo."
+                "Estado da conexão do dispositivo."
             )
         )
 
         sync_card, self.queue_status_label, self.queue_detail_label = (
             self.create_card(
-                "Sincroniza??o",
+                "Sincronização",
                 "0",
                 "Arquivos aguardando envio."
             )
@@ -578,11 +679,11 @@ class LDesktop(QMainWindow):
         recent_layout.setContentsMargins(20, 17, 20, 17)
         recent_layout.setSpacing(9)
 
-        recent_title = QLabel("?LTIMO REPLAY")
+        recent_title = QLabel("ÚLTIMO REPLAY")
         recent_title.setObjectName("cardTitle")
 
         self.last_replay_label = QLabel(
-            "Nenhum replay salvo nesta sess?o."
+            "Nenhum replay salvo nesta sessão."
         )
         self.last_replay_label.setObjectName("muted")
         self.last_replay_label.setWordWrap(True)
@@ -678,13 +779,6 @@ class LDesktop(QMainWindow):
         sidebar_layout.addWidget(games_scroll, 1)
 
         sidebar_layout.addStretch()
-
-        sidebar_note = QLabel(
-            "Seus replays ficam salvos localmente."
-        )
-        sidebar_note.setObjectName("muted")
-        sidebar_note.setWordWrap(True)
-        sidebar_layout.addWidget(sidebar_note)
 
         workspace.addWidget(sidebar)
 
@@ -1239,7 +1333,7 @@ class LDesktop(QMainWindow):
                 )
                 self.overview_save_button.setEnabled(False)
                 self.overview_save_button.setToolTip(
-                    "A captura est? pausada no momento."
+                    "A captura está pausada no momento."
                 )
 
         if hasattr(self, "sidebar_status_label"):
@@ -1250,7 +1344,7 @@ class LDesktop(QMainWindow):
         settings = load_audio_settings()
         microphone_name = settings.get(
             "microphone_name",
-            "Padr?o do Windows",
+            "Padrão do Windows",
         )
 
         if hasattr(self, "audio_status_label"):
@@ -1262,7 +1356,7 @@ class LDesktop(QMainWindow):
             else:
                 self.audio_status_label.setText("Pausado")
                 self.audio_detail_label.setText(
-                    "A captura de ?udio est? temporariamente pausada."
+                    "A captura de áudio está temporariamente pausada."
                 )
 
         try:
@@ -1282,7 +1376,7 @@ class LDesktop(QMainWindow):
                     "Dispositivo vinculado ao Discord."
                 )
             else:
-                self.discord_status_label.setText("N?o vinculado")
+                self.discord_status_label.setText("Não vinculado")
                 self.discord_status_label.setStyleSheet(
                     "color: #E8BF79; font-size: 22px; "
                     "font-weight: bold;"
@@ -1684,25 +1778,6 @@ class LDesktop(QMainWindow):
                     f"[REPLAY LIBRARY] Erro ao montar card: {error}"
                 )
 
-        count = len(visible_replays)
-        self.replay_result_label.setText(
-            f"{count} momento(s)"
-        )
-
-        self.replay_list.setVisible(count > 0)
-        self.replay_empty_label.setVisible(count == 0)
-
-        if count == 0:
-            if search or selected_game or favorites_only or period != "all":
-                self.replay_empty_label.setText(
-                    "Nenhum replay corresponde aos filtros selecionados."
-                )
-            else:
-                self.replay_empty_label.setText(
-                    "Sua biblioteca ainda esta vazia.\n"
-                    "Salve um momento com F9 para ele aparecer aqui."
-                )
-
         if visible_replays:
             latest, metadata = visible_replays[0]
             self.last_replay_label.setText(
@@ -1920,6 +1995,42 @@ class LDesktop(QMainWindow):
 
     def on_live_friends_updated(self, friends):
 
+        if not isinstance(friends, list):
+            return
+
+        previous_states = self._live_stream_states
+        current_states = {}
+
+        for friend in friends:
+            if not isinstance(friend, dict):
+                continue
+
+            friend_id = friend.get("id")
+
+            if friend_id is None:
+                continue
+
+            streaming = bool(friend.get("liveStreaming", False))
+            current_states[friend_id] = streaming
+
+            # A primeira consulta apenas estabelece a refer?ncia.
+            # Não notifica transmiss?es que j? estavam em andamento.
+            if previous_states is not None:
+                was_streaming = previous_states.get(friend_id)
+
+                if was_streaming is False and streaming:
+                    display_name = (
+                        friend.get("displayName")
+                        or friend.get("username")
+                        or "Membro"
+                    )
+
+                    self.show_live_toast(
+                        friend_id,
+                        display_name
+                    )
+
+        self._live_stream_states = current_states
         self.live_friends = friends
 
         if hasattr(self, "live_page"):
@@ -1927,7 +2038,7 @@ class LDesktop(QMainWindow):
 
         online_count = sum(
             1 for friend in friends
-            if friend.get("liveOnline")
+            if isinstance(friend, dict) and friend.get("liveOnline")
         )
 
         print(
@@ -1935,6 +2046,47 @@ class LDesktop(QMainWindow):
             f"{len(friends)} membros, "
             f"{online_count} com L Desktop ativo."
         )
+
+    def show_live_toast(self, user_id, display_name):
+        while len(self._live_toasts) >= 3:
+            self._live_toasts[0].dismiss()
+
+        toast = LiveToast(user_id, display_name)
+        toast.watch_requested.connect(self.open_live_viewer)
+        toast.dismissed.connect(self.remove_live_toast)
+
+        self._live_toasts.append(toast)
+        self.position_live_toasts()
+        toast.show()
+        toast.raise_()
+
+    def remove_live_toast(self, toast):
+        if toast in self._live_toasts:
+            self._live_toasts.remove(toast)
+
+        toast.hide()
+        toast.deleteLater()
+        self.position_live_toasts()
+
+    def position_live_toasts(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+
+        geometry = screen.availableGeometry()
+        margin = 20
+        spacing = 10
+        x = geometry.right() - 340 - margin
+        y = geometry.top() + margin
+
+        for toast in self._live_toasts:
+            toast.move(x, y)
+            y += toast.height() + spacing
+
+    def resizeEvent(self, event):
+
+        super().resizeEvent(event)
+        self.position_live_toasts()
 
     def start_capture_queue(self):
         self.capture_queue_worker = CaptureQueueWorker(self)
@@ -1977,11 +2129,11 @@ class LDesktop(QMainWindow):
 
             state = "ativada" if enabled else "desativada"
             print(
-                f"[STARTUP] Inicializa??o com Windows {state}."
+                f"[STARTUP] Inicialização com Windows {state}."
             )
 
         except Exception as error:
-            print(f"[STARTUP] Erro ao alterar configura??o: {error}")
+            print(f"[STARTUP] Erro ao alterar configuração: {error}")
 
             self.startup_checkbox.blockSignals(True)
             self.startup_checkbox.setChecked(not enabled)
@@ -1989,8 +2141,8 @@ class LDesktop(QMainWindow):
 
             QMessageBox.warning(
                 self,
-                "Inicializa??o do Windows",
-                f"N?o foi poss?vel alterar a configura??o:\n\n{error}",
+                "Inicialização do Windows",
+                f"Não foi possível alterar a configuração:\n\n{error}",
             )
 
     def start_update_checker(self):
@@ -2125,7 +2277,7 @@ class LDesktop(QMainWindow):
         if not filepath.is_file():
             QMessageBox.warning(
                 self,
-                "Replay n?o encontrado",
+                "Replay não encontrado",
                 str(filepath),
             )
             return
@@ -2133,8 +2285,8 @@ class LDesktop(QMainWindow):
         if self.replay_player_page is None:
             QMessageBox.warning(
                 self,
-                "Player indispon?vel",
-                "N?o foi poss?vel inicializar o player de replays.",
+                "Player indisponível",
+                "Não foi possível inicializar o player de replays.",
             )
             return
 
@@ -2264,7 +2416,7 @@ class LDesktop(QMainWindow):
     def on_update_available(self, update):
         version = getattr(update, "version", None)
 
-        # N?o repetir o aviso da mesma vers?o nesta sess?o.
+        # Não repetir o aviso da mesma vers?o nesta sess?o.
         if version and version in self.notified_update_versions:
             return
 

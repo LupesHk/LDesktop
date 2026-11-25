@@ -53,7 +53,16 @@ internal static class Program
 
             if (args.Length == 1 && args[0] == "capture")
             {
-                int discordPid = FindDiscordRootProcess();
+                int? discordPid = FindDiscordRootProcess(
+                    allowMissing: true
+                );
+
+                Console.Error.WriteLine(
+                    discordPid.HasValue
+                        ? $"MODE|PROCESS_LOOPBACK_EXCLUDE_DISCORD|{discordPid.Value}"
+                        : "MODE|SYSTEM_LOOPBACK"
+                );
+
                 return await CaptureAsync(discordPid);
             }
 
@@ -98,14 +107,19 @@ internal static class Program
     }
 
     [SupportedOSPlatform("windows10.0.19041.0")]
-    private static int FindDiscordRootProcess()
+    private static int? FindDiscordRootProcess(bool allowMissing = false)
     {
         Process[] processes = Process.GetProcessesByName("Discord");
 
         if (processes.Length == 0)
         {
+            if (allowMissing)
+            {
+                return null;
+            }
+
             throw new InvalidOperationException(
-                "Discord não está aberto. Abra o Discord antes de iniciar a Live."
+                "Discord não está aberto."
             );
         }
 
@@ -148,15 +162,31 @@ internal static class Program
     }
 
     [SupportedOSPlatform("windows10.0.19041.0")]
-    private static async Task<int> CaptureAsync(int discordPid)
+    private static async Task<int> CaptureAsync(int? discordPid)
     {
-        using Process discord = Process.GetProcessById(discordPid);
+        using Process? discord = discordPid.HasValue
+            ? Process.GetProcessById(discordPid.Value)
+            : null;
 
-        await using var recorder = await new WasapiRecorderBuilder()
-            .WithProcessLoopback(
-                (uint)discordPid,
+        var recorderBuilder = new WasapiRecorderBuilder();
+
+        if (discordPid.HasValue)
+        {
+            // Discord aberto: captura o restante do sistema,
+            // excluindo a árvore de processos do Discord.
+            recorderBuilder.WithProcessLoopback(
+                (uint)discordPid.Value,
                 ProcessLoopbackMode.ExcludeTargetProcessTree
-            )
+            );
+        }
+        else
+        {
+            // Discord fechado: captura o áudio global do dispositivo
+            // de saída padrão do Windows.
+            recorderBuilder.WithLoopbackCapture();
+        }
+
+        await using var recorder = await recorderBuilder
             .WithFormat(
                 new WaveFormat(
                     SampleRate,
@@ -234,7 +264,8 @@ internal static class Program
 
         Console.Error.Flush();
 
-        Task processExit = discord.WaitForExitAsync();
+        Task processExit = discord?.WaitForExitAsync()
+            ?? Task.Delay(Timeout.InfiniteTimeSpan);
 
         Task stopRequested = Task.Delay(
             Timeout.InfiniteTimeSpan,
@@ -249,7 +280,7 @@ internal static class Program
             shutdownSignal
         );
 
-        bool discordClosed = processExit.IsCompleted;
+        bool discordClosed = discord is not null && processExit.IsCompleted;
 
         stop.Cancel();
 
