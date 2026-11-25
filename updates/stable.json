@@ -1,6 +1,6 @@
 {
-    "version":  "0.1.7",
-    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.7/LDesktop-Setup-0.1.7.exe",
-    "sha256":  "29846DE16B8F3CC507DED8E348D32AC18393592C46A71E268073DBAB62324D91",
-    "notes":  "Compartilhamento de tela, integração LiveKit e melhorias gerais."
+    "version":  "0.1.8",
+    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.8/LDesktop-Setup-0.1.8.exe",
+    "sha256":  "BB7C876AD559F5341F9983EA238C98D59E65F4CD0FBE101FF518162E85BBF784",
+    "notes":  "Interface renovada, player integrado de replays com tela cheia, Picture-in-Picture, melhorias na captura de tela e no áudio, e ajustes de estabilidade."
 }
