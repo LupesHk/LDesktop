@@ -1,5 +1,5 @@
 # Versão atual do L Desktop
-APP_VERSION = "0.1.8"
+APP_VERSION = "0.1.9"
 
 # Canal de atualização
 UPDATE_CHANNEL = "stable"
