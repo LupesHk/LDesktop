@@ -1,6 +1,6 @@
 {
-    "version":  "0.1.8",
-    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.8/LDesktop-Setup-0.1.8.exe",
-    "sha256":  "BB7C876AD559F5341F9983EA238C98D59E65F4CD0FBE101FF518162E85BBF784",
-    "notes":  "Interface renovada, player integrado de replays com tela cheia, Picture-in-Picture, melhorias na captura de tela e no áudio, e ajustes de estabilidade."
+    "version":  "0.1.9",
+    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.9/LDesktop-Setup-0.1.9.exe",
+    "sha256":  "5D379BBB21528C30536FF1D6D54CC28419B6198ADE37ECAE7EE19241118B2EBD",
+    "notes":  "Melhorias na experiência LIVE, com visualizador reformulado, mural de espectadores em tempo real, notificações de novas transmissões, suporte a tela cheia e mini player. Aprimoramentos na captura de áudio, atualização de presença e estabilidade geral do aplicativo."
 }
