@@ -34,8 +34,11 @@ $manifestPath = Join-Path $Root "updates\stable.json"
 $specPath = Join-Path $Root "LDesktop.spec"
 $updaterPath = Join-Path $Root "src\updater_main.py"
 $installerDir = Join-Path $Root "dist\installer"
+$audioProjectPath = Join-Path $Root "tools\LiveAudioCapture\LiveAudioCapture.csproj"
+$audioSourcePath = Join-Path $Root "tools\LiveAudioCapture\Program.cs"
+$nugetConfigPath = Join-Path $Root "NuGet.Config"
 
-foreach ($required in @($configPath, $issPath, $manifestPath, $specPath, $updaterPath)) {
+foreach ($required in @($configPath, $issPath, $manifestPath, $specPath, $updaterPath, $audioProjectPath, $audioSourcePath, $nugetConfigPath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Arquivo obrigatório não encontrado: $required"
     }
@@ -47,6 +50,41 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     if (-not $pythonCommand) { throw "Python não encontrado. Crie/ative o ambiente virtual do projeto." }
     $python = $pythonCommand.Source
 }
+
+
+# O SDK .NET é necessário apenas na máquina que compila o instalador.
+$dotnetCommand = Get-Command dotnet.exe -ErrorAction SilentlyContinue
+
+if ($dotnetCommand) {
+    $dotnet = $dotnetCommand.Source
+} else {
+    $dotnetFallback = Join-Path $env:ProgramFiles "dotnet\dotnet.exe"
+    if (-not (Test-Path -LiteralPath $dotnetFallback)) {
+        throw "SDK .NET 10 ou superior não encontrado. Necessário apenas para compilar a versão."
+    }
+    $dotnet = $dotnetFallback
+}
+
+$sdkOutput = @(& $dotnet --list-sdks 2>&1)
+if ($LASTEXITCODE -ne 0) {
+    throw "Não foi possível consultar os SDKs .NET instalados."
+}
+
+$hasSupportedSdk = $false
+foreach ($sdkLine in $sdkOutput) {
+    if ("$sdkLine" -match '^\s*(\d+)\.') {
+        if ([int]$Matches[1] -ge 10) {
+            $hasSupportedSdk = $true
+            break
+        }
+    }
+}
+
+if (-not $hasSupportedSdk) {
+    throw "É necessário instalar o SDK .NET 10 ou superior na máquina de compilação."
+}
+
+Write-Host "SDK .NET encontrado: $dotnet" -ForegroundColor Green
 
 $gitCommand = Get-Command git -ErrorAction SilentlyContinue
 if (-not $gitCommand) { throw "Git não encontrado no PATH." }
@@ -211,6 +249,31 @@ try {
 
     Write-Host "`n=== VALIDANDO PYTHON ===" -ForegroundColor Cyan
     Invoke-Checked $python @("-m", "compileall", "-q", "src")
+
+
+    Write-Host "`n=== COMPILANDO CAPTURADOR DE AUDIO ===" -ForegroundColor Cyan
+
+    $audioOutput = Join-Path $Root "bin\LiveAudioCapture"
+
+    Invoke-Checked $dotnet @(
+        "publish",
+        ".\tools\LiveAudioCapture\LiveAudioCapture.csproj",
+        "-c", "Release",
+        "-r", "win-x64",
+        "--self-contained", "true",
+        "-p:PublishSingleFile=true",
+        "-p:IncludeNativeLibrariesForSelfExtract=true",
+        "-p:PublishTrimmed=false",
+        "-o", $audioOutput
+    )
+
+    $audioExecutable = Join-Path $audioOutput "LiveAudioCapture.exe"
+
+    if (-not (Test-Path -LiteralPath $audioExecutable -PathType Leaf)) {
+        throw "Executável auxiliar de áudio não foi gerado."
+    }
+
+    Write-Host "Capturador preparado: $audioExecutable" -ForegroundColor Green
 
     Write-Host "`n=== COMPILANDO APLICATIVO ===" -ForegroundColor Cyan
     Invoke-Checked $python @("-m", "PyInstaller", "--clean", "--noconfirm", ".\LDesktop.spec")

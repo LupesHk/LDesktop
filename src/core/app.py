@@ -9,6 +9,7 @@ import traceback
 from pathlib import Path
 from ctypes import wintypes
 from modules.live_viewer import LiveViewerDialog
+from modules.replay_player import ReplayPlayerWidget
 
 import keyboard
 
@@ -211,6 +212,7 @@ class LDesktop(QMainWindow):
         self.resize(1080, 700)
         self.setMinimumSize(850, 580)
         self.live_viewer_dialog = None
+        self.replay_player_page = None
 
         self.recorder = ReplayRecorder()
 
@@ -276,187 +278,7 @@ class LDesktop(QMainWindow):
     # ---------------------------------------------------------
 
     def setup_style(self):
-        self.setStyleSheet("""
-            QMainWindow, QWidget#centralWidget {
-                background-color: #11111a;
-                color: #f0eff8;
-                font-family: "Segoe UI";
-                font-size: 13px;
-            }
-
-            QFrame#sidebar {
-                background-color: #171722;
-                border-right: 1px solid #29293a;
-            }
-
-            QFrame#brandMark {
-                background-color: transparent;
-                border-radius: 11px;
-            }
-
-            QLabel#brandLetter {
-                color: white;
-                font-size: 23px;
-                font-weight: bold;
-            }
-
-            QLabel#brandTitle {
-                color: #f4f1ff;
-                font-size: 20px;
-                font-weight: bold;
-            }
-
-            QLabel#brandSubtitle {
-                color: #89899e;
-                font-size: 10px;
-                letter-spacing: 1px;
-            }
-
-            QLabel#sectionLabel {
-                color: #74748b;
-                font-size: 10px;
-                font-weight: bold;
-                padding-left: 9px;
-                letter-spacing: 1px;
-            }
-
-            QPushButton#navButton {
-                background-color: transparent;
-                color: #a6a5b9;
-                border: none;
-                border-radius: 8px;
-                padding: 12px 13px;
-                text-align: left;
-                font-size: 13px;
-            }
-
-            QPushButton#navButton:hover {
-                background-color: #242437;
-                color: white;
-            }
-
-            QPushButton#navButton:checked {
-                background-color: #30284d;
-                color: #c6b9ff;
-                border: 1px solid #51417d;
-                font-weight: bold;
-            }
-
-            QLabel#pageTitle {
-                font-size: 25px;
-                font-weight: bold;
-                color: #f5f3fc;
-            }
-
-            QLabel#pageSubtitle {
-                color: #9291a8;
-                font-size: 12px;
-            }
-
-            QFrame#card {
-                background-color: #191925;
-                border: 1px solid #2d2d40;
-                border-radius: 12px;
-            }
-
-            QFrame#card:hover {
-                border-color: #46405e;
-            }
-
-            QLabel#cardTitle {
-                color: #9d9cb2;
-                font-size: 11px;
-                font-weight: bold;
-                letter-spacing: 0.7px;
-            }
-
-            QLabel#cardValue {
-                color: #f5f2ff;
-                font-size: 22px;
-                font-weight: bold;
-            }
-
-            QLabel#muted {
-                color: #9291a8;
-                font-size: 12px;
-            }
-
-            QLabel#successText {
-                color: #70d6a1;
-                font-size: 12px;
-                font-weight: bold;
-            }
-
-            QLabel#warningText {
-                color: #e5bc71;
-                font-size: 12px;
-                font-weight: bold;
-            }
-
-            QPushButton {
-                background-color: #252538;
-                color: #efedf8;
-                border: 1px solid #393950;
-                border-radius: 8px;
-                padding: 11px 15px;
-                font-size: 12px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #33334b;
-                border-color: #62528e;
-            }
-
-            QPushButton:pressed {
-                background-color: #29233e;
-            }
-
-            QPushButton#primaryButton {
-                background-color: #7657e8;
-                color: white;
-                border: 1px solid #876cf0;
-            }
-
-            QPushButton#primaryButton:hover {
-                background-color: #866cf1;
-            }
-
-            QPushButton#dangerButton {
-                background-color: #41242e;
-                color: #f0a6b4;
-                border: 1px solid #68404d;
-            }
-
-            QListWidget {
-                background-color: #191925;
-                border: 1px solid #2d2d40;
-                border-radius: 9px;
-                padding: 7px;
-                outline: none;
-            }
-
-            QListWidget::item {
-                color: #e7e4f2;
-                padding: 12px;
-                border-radius: 6px;
-                border-bottom: 1px solid #29293a;
-            }
-
-            QListWidget::item:hover {
-                background-color: #28283b;
-            }
-
-            QListWidget::item:selected {
-                background-color: #30284d;
-                color: #d2c8ff;
-            }
-
-            QProgressDialog {
-                background-color: #191925;
-                color: white;
-            }
-        """)
+        self.setStyleSheet('\n            QMainWindow, QWidget#centralWidget {\n                background-color: #101018;\n                color: #F0EFF8;\n                font-family: "Segoe UI";\n                font-size: 13px;\n            }\n\n            QFrame#sidebar {\n                background-color: #15151F;\n                border-right: 1px solid #29293A;\n            }\n\n            QFrame#brandMark {\n                background-color: #27213F;\n                border: 1px solid #403465;\n                border-radius: 12px;\n            }\n\n            QLabel#brandLetter {\n                color: white;\n                font-size: 23px;\n                font-weight: bold;\n            }\n\n            QLabel#brandTitle {\n                color: #F5F2FF;\n                font-size: 19px;\n                font-weight: bold;\n            }\n\n            QLabel#brandSubtitle {\n                color: #9290A7;\n                font-size: 10px;\n                letter-spacing: 1px;\n            }\n\n            QLabel#sectionLabel {\n                color: #77758E;\n                font-size: 10px;\n                font-weight: bold;\n                padding-left: 10px;\n                letter-spacing: 1.2px;\n            }\n\n            QPushButton#navButton {\n                background-color: transparent;\n                color: #A7A5BA;\n                border: 1px solid transparent;\n                border-radius: 9px;\n                padding: 12px 14px;\n                min-height: 20px;\n                text-align: left;\n                font-size: 13px;\n            }\n\n            QPushButton#navButton:hover {\n                background-color: #232332;\n                color: #FFFFFF;\n                border: 1px solid #303047;\n            }\n\n            QPushButton#navButton:checked {\n                background-color: #2D2548;\n                color: #D1C5FF;\n                border: 1px solid #51417D;\n                font-weight: bold;\n            }\n\n            QLabel#pageTitle {\n                font-size: 26px;\n                font-weight: bold;\n                color: #F6F3FF;\n            }\n\n            QLabel#pageSubtitle {\n                color: #9997AD;\n                font-size: 12px;\n            }\n\n            QFrame#card {\n                background-color: #191923;\n                border: 1px solid #2B2B3D;\n                border-radius: 14px;\n            }\n\n            QFrame#card:hover {\n                border-color: #40385A;\n            }\n\n            QLabel#cardTitle {\n                color: #A6A3B9;\n                font-size: 10px;\n                font-weight: bold;\n                letter-spacing: 1px;\n            }\n\n            QLabel#cardValue {\n                color: #F7F4FF;\n                font-size: 24px;\n                font-weight: bold;\n            }\n\n            QLabel#muted {\n                color: #9997AD;\n                font-size: 12px;\n            }\n\n            QLabel#successText {\n                color: #70D9A5;\n                font-size: 12px;\n                font-weight: bold;\n            }\n\n            QLabel#warningText {\n                color: #E8BF79;\n                font-size: 12px;\n                font-weight: bold;\n            }\n\n            QPushButton {\n                background-color: #232332;\n                color: #F0EEF8;\n                border: 1px solid #37374B;\n                border-radius: 9px;\n                padding: 9px 15px;\n                min-height: 18px;\n                font-size: 12px;\n                font-weight: bold;\n            }\n\n            QPushButton:hover {\n                background-color: #303047;\n                border-color: #62528E;\n            }\n\n            QPushButton:pressed {\n                background-color: #29233E;\n            }\n\n            QPushButton:disabled {\n                background-color: #1A1A25;\n                color: #656477;\n                border-color: #292938;\n            }\n\n            QPushButton#primaryButton {\n                background-color: #7657E8;\n                color: white;\n                border: 1px solid #896DF3;\n            }\n\n            QPushButton#primaryButton:hover {\n                background-color: #866CF1;\n                border-color: #A18BFF;\n            }\n\n            QPushButton#primaryButton:pressed {\n                background-color: #6245CD;\n            }\n\n            QPushButton#dangerButton {\n                background-color: #41242E;\n                color: #F0A6B4;\n                border: 1px solid #68404D;\n            }\n\n            QPushButton#dangerButton:hover {\n                background-color: #512B39;\n                border-color: #895061;\n            }\n\n            QLineEdit, QTextEdit, QPlainTextEdit,\n            QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {\n                background-color: #14141E;\n                color: #F0EEF8;\n                border: 1px solid #343448;\n                border-radius: 8px;\n                padding: 8px 10px;\n                selection-background-color: #7657E8;\n                selection-color: white;\n            }\n\n            QLineEdit:focus, QTextEdit:focus,\n            QPlainTextEdit:focus, QComboBox:focus,\n            QSpinBox:focus, QDoubleSpinBox:focus,\n            QDateEdit:focus {\n                border: 1px solid #8065E8;\n                background-color: #181724;\n            }\n\n            QLineEdit:disabled, QComboBox:disabled {\n                color: #69677C;\n                background-color: #191923;\n                border-color: #292938;\n            }\n\n            QComboBox {\n                padding-right: 28px;\n            }\n\n            QComboBox::drop-down {\n                subcontrol-origin: padding;\n                subcontrol-position: top right;\n                width: 27px;\n                border-left: 1px solid #343448;\n                border-top-right-radius: 8px;\n                border-bottom-right-radius: 8px;\n            }\n\n            QComboBox QAbstractItemView {\n                background-color: #1B1B28;\n                color: #F0EEF8;\n                border: 1px solid #403B59;\n                selection-background-color: #393052;\n                selection-color: #FFFFFF;\n                padding: 5px;\n                outline: none;\n            }\n\n            QCheckBox {\n                color: #E8E5F2;\n                spacing: 9px;\n            }\n\n            QCheckBox::indicator {\n                width: 17px;\n                height: 17px;\n                border-radius: 5px;\n                border: 1px solid #55536C;\n                background-color: #171722;\n            }\n\n            QCheckBox::indicator:hover {\n                border-color: #9077ED;\n            }\n\n            QCheckBox::indicator:checked {\n                background-color: #7657E8;\n                border: 1px solid #957BFA;\n            }\n\n            QSlider::groove:horizontal {\n                height: 5px;\n                background-color: #343348;\n                border-radius: 2px;\n            }\n\n            QSlider::sub-page:horizontal {\n                background-color: #8063ED;\n                border-radius: 2px;\n            }\n\n            QSlider::handle:horizontal {\n                background-color: #E9E1FF;\n                border: 2px solid #8063ED;\n                width: 13px;\n                height: 13px;\n                margin: -5px 0;\n                border-radius: 7px;\n            }\n\n            QSlider::handle:horizontal:hover {\n                background-color: white;\n                border-color: #A18AFF;\n            }\n\n            QListWidget {\n                background-color: #191923;\n                color: #E9E6F3;\n                border: 1px solid #2D2D40;\n                border-radius: 10px;\n                padding: 8px;\n                outline: none;\n            }\n\n            QListWidget::item {\n                color: #E7E4F2;\n                padding: 12px;\n                border-radius: 7px;\n                border-bottom: 1px solid #29293A;\n            }\n\n            QListWidget::item:hover {\n                background-color: #28283B;\n            }\n\n            QListWidget::item:selected {\n                background-color: #30284D;\n                color: #D7CDFF;\n                border: 1px solid #51417D;\n            }\n\n            QScrollBar:vertical {\n                background-color: transparent;\n                width: 9px;\n                margin: 2px;\n            }\n\n            QScrollBar::handle:vertical {\n                background-color: #39394D;\n                border-radius: 4px;\n                min-height: 28px;\n            }\n\n            QScrollBar::handle:vertical:hover {\n                background-color: #62577F;\n            }\n\n            QScrollBar::add-line:vertical,\n            QScrollBar::sub-line:vertical {\n                height: 0px;\n            }\n\n            QScrollBar::add-page:vertical,\n            QScrollBar::sub-page:vertical {\n                background: transparent;\n            }\n\n            QScrollBar:horizontal {\n                background-color: transparent;\n                height: 9px;\n                margin: 2px;\n            }\n\n            QScrollBar::handle:horizontal {\n                background-color: #39394D;\n                border-radius: 4px;\n                min-width: 28px;\n            }\n\n            QScrollBar::handle:horizontal:hover {\n                background-color: #62577F;\n            }\n\n            QScrollBar::add-line:horizontal,\n            QScrollBar::sub-line:horizontal {\n                width: 0px;\n            }\n\n            QProgressBar {\n                background-color: #252536;\n                color: #F0EEF8;\n                border: 1px solid #37374B;\n                border-radius: 5px;\n                text-align: center;\n                min-height: 9px;\n            }\n\n            QProgressBar::chunk {\n                background-color: #8063ED;\n                border-radius: 4px;\n            }\n\n            QHeaderView::section {\n                background-color: #20202E;\n                color: #AAA7BD;\n                border: none;\n                border-bottom: 1px solid #37374B;\n                padding: 9px;\n                font-weight: bold;\n            }\n\n            QToolTip {\n                background-color: #242333;\n                color: #F6F3FF;\n                border: 1px solid #51417D;\n                padding: 6px 9px;\n                border-radius: 6px;\n            }\n\n            QProgressDialog {\n                background-color: #191923;\n                color: white;\n            }\n        \n\n    QFrame#overviewHero {\n        background-color: #1C192B;\n        border: 1px solid #453761;\n        border-radius: 16px;\n    }\n\n    QLabel#overviewEyebrow {\n        color: #A997E6;\n        font-size: 10px;\n        font-weight: bold;\n        letter-spacing: 1.3px;\n        background: transparent;\n    }\n\n    QLabel#overviewHeroTitle {\n        color: #F7F4FF;\n        font-size: 23px;\n        font-weight: bold;\n        background: transparent;\n    }\n\n    QLabel#overviewHeroDescription {\n        color: #B0ADC2;\n        font-size: 12px;\n        background: transparent;\n    }\n\n    QLabel#overviewRuntimeSummary {\n        color: #C7B8F5;\n        font-size: 11px;\n        font-weight: bold;\n        background: transparent;\n    }\n\n    QPushButton#overviewPrimaryAction {\n        background-color: #7657E8;\n        color: white;\n        border: 1px solid #927AF0;\n        border-radius: 9px;\n        padding: 10px 15px;\n        min-width: 155px;\n        min-height: 18px;\n    }\n\n    QPushButton#overviewPrimaryAction:hover {\n        background-color: #866CF1;\n        border-color: #AD9AFF;\n    }\n\n    QPushButton#overviewSecondaryAction {\n        background-color: #29243A;\n        color: #D6CCF5;\n        border: 1px solid #51456E;\n        border-radius: 9px;\n        padding: 10px 15px;\n        min-width: 155px;\n        min-height: 18px;\n    }\n\n    QPushButton#overviewSecondaryAction:hover {\n        background-color: #37304D;\n        border-color: #7967A8;\n    }\n\n    QPushButton#overviewInlineAction {\n        background-color: transparent;\n        color: #BDAEFF;\n        border: 1px solid transparent;\n        padding: 5px 8px;\n        font-size: 11px;\n    }\n\n    QPushButton#overviewInlineAction:hover {\n        background-color: #2B2640;\n        border-color: #51417D;\n    }\n\n    QPushButton#overviewQuickButton {\n        background-color: #222231;\n        color: #D6D3E5;\n        border: 1px solid #38384D;\n        border-radius: 8px;\n        padding: 8px 10px;\n        min-height: 20px;\n        font-size: 11px;\n        text-align: left;\n    }\n\n    QPushButton#overviewQuickButton:hover {\n        background-color: #302A45;\n        color: white;\n        border-color: #62528E;\n    }\n\n\n\n    QFrame#overviewHero {\n        background-color: #1C192B;\n        border: 1px solid #453761;\n        border-radius: 16px;\n    }\n\n    QLabel#overviewEyebrow {\n        color: #A997E6;\n        font-size: 10px;\n        font-weight: bold;\n        letter-spacing: 1.3px;\n        background: transparent;\n    }\n\n    QLabel#overviewHeroTitle {\n        color: #F7F4FF;\n        font-size: 24px;\n        font-weight: bold;\n        background: transparent;\n    }\n\n    QLabel#overviewHeroDescription {\n        color: #B0ADC2;\n        font-size: 12px;\n        background: transparent;\n    }\n\n    QLabel#overviewCaptureStatus {\n        color: #70D9A5;\n        font-size: 11px;\n        font-weight: bold;\n        background: transparent;\n    }\n')
 
     def setup_ui(self):
         central = QWidget()
@@ -470,11 +292,11 @@ class LDesktop(QMainWindow):
         # Barra lateral
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
-        self.sidebar.setFixedWidth(225)
+        self.sidebar.setFixedWidth(236)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(17, 22, 17, 18)
-        sidebar_layout.setSpacing(9)
+        sidebar_layout.setContentsMargins(20, 24, 20, 18)
+        sidebar_layout.setSpacing(10)
 
         brand_row = QHBoxLayout()
         brand_row.setSpacing(11)
@@ -569,8 +391,8 @@ class LDesktop(QMainWindow):
         # Área principal
         main_area = QWidget()
         main_layout = QVBoxLayout(main_area)
-        main_layout.setContentsMargins(28, 23, 28, 24)
-        main_layout.setSpacing(19)
+        main_layout.setContentsMargins(30, 26, 30, 26)
+        main_layout.setSpacing(21)
 
         topbar = QHBoxLayout()
 
@@ -593,6 +415,12 @@ class LDesktop(QMainWindow):
         self.page_stack.addWidget(self.build_live_page())
         self.page_stack.addWidget(self.build_settings_page())
 
+        self.replay_player_page = ReplayPlayerWidget(self.page_stack)
+        self.replay_player_page.back_requested.connect(
+            self.return_to_replays
+        )
+        self.page_stack.addWidget(self.replay_player_page)
+
         main_layout.addWidget(self.page_stack)
 
         root.addWidget(main_area, 1)
@@ -604,7 +432,7 @@ class LDesktop(QMainWindow):
 
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(17)
+        layout.setSpacing(20)
 
         description = QLabel(subtitle)
         description.setObjectName("pageSubtitle")
@@ -618,8 +446,8 @@ class LDesktop(QMainWindow):
         card.setObjectName("card")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(17, 16, 17, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
 
         heading = QLabel(title.upper())
         heading.setObjectName("cardTitle")
@@ -638,28 +466,82 @@ class LDesktop(QMainWindow):
 
         return card, value_label, description_label
 
+
+
     def build_overview_page(self):
         page, layout = self.page_container(
-            "Visão geral",
-            "Acompanhe o estado do L Desktop e acesse suas ferramentas."
+            "Vis?o geral",
+            "Seus momentos, ?udio e conex?o em um s? lugar."
         )
 
+        # Destaque principal: a??o que interessa ao usu?rio.
+        hero = QFrame()
+        hero.setObjectName("overviewHero")
+        hero.setMinimumHeight(145)
+
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(24, 21, 24, 21)
+        hero_layout.setSpacing(20)
+
+        info = QVBoxLayout()
+        info.setSpacing(8)
+
+        eyebrow = QLabel("L DESKTOP")
+        eyebrow.setObjectName("overviewEyebrow")
+
+        title = QLabel("Seus melhores momentos.")
+        title.setObjectName("overviewHeroTitle")
+
+        description = QLabel(
+            "Salve um replay da sua partida e encontre tudo "
+            "organizado na sua biblioteca."
+        )
+        description.setObjectName("overviewHeroDescription")
+        description.setWordWrap(True)
+
+        self.overview_capture_status = QLabel(
+            "Verificando disponibilidade..."
+        )
+        self.overview_capture_status.setObjectName(
+            "overviewCaptureStatus"
+        )
+
+        info.addWidget(eyebrow)
+        info.addWidget(title)
+        info.addWidget(description)
+        info.addSpacing(2)
+        info.addWidget(self.overview_capture_status)
+        info.addStretch()
+
+        action = QVBoxLayout()
+        action.addStretch()
+
+        self.overview_save_button = QPushButton("Salvar replay")
+        self.overview_save_button.setObjectName("primaryButton")
+        self.overview_save_button.setMinimumHeight(44)
+        self.overview_save_button.setMinimumWidth(165)
+        self.overview_save_button.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        self.overview_save_button.clicked.connect(self.save_replay)
+
+        action.addWidget(self.overview_save_button)
+        action.addStretch()
+
+        hero_layout.addLayout(info, 1)
+        hero_layout.addLayout(action)
+
+        layout.addWidget(hero)
+
+        # Indicadores relevantes para o usu?rio.
         grid = QGridLayout()
         grid.setSpacing(13)
 
-        replay_card, self.replay_status_label, self.replay_detail_label = (
-            self.create_card(
-                "Replay Buffer",
-                "Inicializando",
-                "Captura contínua dos últimos 30 segundos."
-            )
-        )
-
         audio_card, self.audio_status_label, self.audio_detail_label = (
             self.create_card(
-                "Áudio",
-                "Inicializando",
-                "Captura de áudio do sistema e diagnóstico do microfone."
+                "?udio",
+                "Verificando",
+                "Estado da captura de ?udio."
             )
         )
 
@@ -667,41 +549,47 @@ class LDesktop(QMainWindow):
             self.create_card(
                 "Discord",
                 "Verificando",
-                "Estado da conexão do dispositivo."
+                "Estado da conex?o do dispositivo."
             )
         )
 
-        queue_card, self.queue_status_label, self.queue_detail_label = (
+        sync_card, self.queue_status_label, self.queue_detail_label = (
             self.create_card(
-                "Fila de envios",
+                "Sincroniza??o",
                 "0",
-                "Arquivos aguardando confirmação do servidor."
+                "Arquivos aguardando envio."
             )
         )
 
-        grid.addWidget(replay_card, 0, 0)
-        grid.addWidget(audio_card, 0, 1)
-        grid.addWidget(discord_card, 1, 0)
-        grid.addWidget(queue_card, 1, 1)
+        for card in (audio_card, discord_card, sync_card):
+            card.setMinimumHeight(115)
+
+        grid.addWidget(audio_card, 0, 0)
+        grid.addWidget(discord_card, 0, 1)
+        grid.addWidget(sync_card, 0, 2)
 
         layout.addLayout(grid)
 
+        # ?ltimo replay salvo.
         recent_card = QFrame()
         recent_card.setObjectName("card")
 
         recent_layout = QVBoxLayout(recent_card)
-        recent_layout.setContentsMargins(17, 14, 17, 14)
-        recent_layout.setSpacing(6)
+        recent_layout.setContentsMargins(20, 17, 20, 17)
+        recent_layout.setSpacing(9)
 
-        recent_title = QLabel("ÚLTIMO REPLAY")
+        recent_title = QLabel("?LTIMO REPLAY")
         recent_title.setObjectName("cardTitle")
 
-        self.last_replay_label = QLabel("Nenhum replay salvo nesta sessão.")
+        self.last_replay_label = QLabel(
+            "Nenhum replay salvo nesta sess?o."
+        )
         self.last_replay_label.setObjectName("muted")
         self.last_replay_label.setWordWrap(True)
 
         recent_layout.addWidget(recent_title)
         recent_layout.addWidget(self.last_replay_label)
+        recent_layout.addStretch()
 
         layout.addWidget(recent_card)
         layout.addStretch()
@@ -722,42 +610,10 @@ class LDesktop(QMainWindow):
         # NAVEGACAO LATERAL
         # --------------------------------------------------
         sidebar = QFrame()
-        sidebar.setObjectName("card")
+        sidebar.setObjectName("replaySidebar")
         sidebar.setFixedWidth(190)
 
-        sidebar.setStyleSheet("""
-            QFrame#replaySidebar {
-                background-color: #191925;
-                border: 1px solid #2d2d40;
-                border-radius: 12px;
-            }
-            QPushButton#replayNavButton {
-                background-color: transparent;
-                color: #aaa8bf;
-                border: 1px solid transparent;
-                border-radius: 7px;
-                padding: 10px;
-                text-align: left;
-                font-size: 12px;
-                font-weight: 500;
-            }
-            QPushButton#replayNavButton:hover {
-                background-color: #252538;
-                color: #ffffff;
-            }
-            QPushButton#replayNavButton:checked {
-                background-color: #30284d;
-                color: #d1c5ff;
-                border: 1px solid #51417d;
-                font-weight: bold;
-            }
-            QLabel#replaySidebarHeading {
-                color: #77758f;
-                font-size: 10px;
-                font-weight: bold;
-                letter-spacing: 1px;
-            }
-        """)
+        sidebar.setStyleSheet('\n    QFrame#replaySidebar {\n        background-color: #191923;\n        border: 1px solid #303047;\n        border-radius: 14px;\n    }\n\n    QPushButton#replayNavButton {\n        background-color: transparent;\n        color: #AAA8BE;\n        border: 1px solid transparent;\n        border-radius: 9px;\n        padding: 10px 12px;\n        min-height: 18px;\n        text-align: left;\n        font-size: 12px;\n    }\n\n    QPushButton#replayNavButton:hover {\n        background-color: #252536;\n        color: #FFFFFF;\n        border-color: #343448;\n    }\n\n    QPushButton#replayNavButton:checked {\n        background-color: #30284D;\n        color: #D7CDFF;\n        border: 1px solid #51417D;\n        font-weight: bold;\n    }\n\n    QLabel#replaySidebarHeading {\n        color: #85839B;\n        font-size: 10px;\n        font-weight: bold;\n        letter-spacing: 1px;\n    }\n')
 
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(12, 16, 12, 14)
@@ -893,13 +749,7 @@ class LDesktop(QMainWindow):
         section_header = QHBoxLayout()
 
         self.replay_section_title = QLabel("Todos os replays")
-        self.replay_section_title.setStyleSheet("""
-            QLabel {
-                color: #f0edf9;
-                font-size: 17px;
-                font-weight: bold;
-            }
-        """)
+        self.replay_section_title.setStyleSheet('\n    QLabel {\n        color: #F6F3FF;\n        font-size: 18px;\n        font-weight: bold;\n    }\n')
 
         self.replay_result_label = QLabel("0 momentos")
         self.replay_result_label.setObjectName("muted")
@@ -920,22 +770,7 @@ class LDesktop(QMainWindow):
         )
         self.replay_search.setClearButtonEnabled(True)
         self.replay_search.setMinimumHeight(40)
-        self.replay_search.setStyleSheet("""
-            QLineEdit {
-                background-color: #191925;
-                color: #efedf8;
-                border: 1px solid #34344b;
-                border-radius: 8px;
-                padding: 9px 12px;
-                selection-background-color: #7657e8;
-            }
-            QLineEdit:focus {
-                border: 1px solid #7657e8;
-            }
-            QLineEdit::placeholder {
-                color: #77758f;
-            }
-        """)
+        self.replay_search.setStyleSheet('\n    QLineEdit {\n        background-color: #14141E;\n        color: #F0EEF8;\n        border: 1px solid #343448;\n        border-radius: 9px;\n        padding: 10px 12px;\n        selection-background-color: #7657E8;\n        selection-color: white;\n    }\n\n    QLineEdit:focus {\n        border: 1px solid #8065E8;\n        background-color: #181724;\n    }\n\n    QLineEdit::placeholder {\n        color: #77758F;\n    }\n')
 
         self.replay_period_filter = QComboBox()
         self.replay_period_filter.setMinimumWidth(135)
@@ -953,29 +788,7 @@ class LDesktop(QMainWindow):
         self.replay_sort_filter.addItem("Maior tamanho", "largest")
         self.replay_sort_filter.addItem("Menor tamanho", "smallest")
 
-        combo_style = """
-            QComboBox {
-                background-color: #191925;
-                color: #e8e5f4;
-                border: 1px solid #34344b;
-                border-radius: 8px;
-                padding: 8px 10px;
-            }
-            QComboBox:hover {
-                border-color: #62528e;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 24px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #191925;
-                color: #e8e5f4;
-                selection-background-color: #30284d;
-                border: 1px solid #34344b;
-                outline: none;
-            }
-        """
+        combo_style = '\n    QComboBox {\n        background-color: #14141E;\n        color: #F0EEF8;\n        border: 1px solid #343448;\n        border-radius: 9px;\n        padding: 9px 28px 9px 11px;\n        min-height: 18px;\n    }\n\n    QComboBox:hover {\n        border-color: #62528E;\n    }\n\n    QComboBox:focus {\n        border-color: #8065E8;\n    }\n\n    QComboBox::drop-down {\n        subcontrol-origin: padding;\n        subcontrol-position: top right;\n        width: 27px;\n        border-left: 1px solid #343448;\n    }\n\n    QComboBox QAbstractItemView {\n        background-color: #1B1B28;\n        color: #F0EEF8;\n        border: 1px solid #403B59;\n        selection-background-color: #393052;\n        selection-color: white;\n        padding: 5px;\n        outline: none;\n    }\n'
 
         self.replay_period_filter.setStyleSheet(combo_style)
         self.replay_sort_filter.setStyleSheet(combo_style)
@@ -1012,23 +825,7 @@ class LDesktop(QMainWindow):
         self.replay_list.setTextElideMode(
             Qt.TextElideMode.ElideRight
         )
-        self.replay_list.setStyleSheet("""
-            QListWidget#replayGallery {
-                background-color: #13131e;
-                border: 1px solid #29293c;
-                border-radius: 11px;
-                padding: 10px;
-                outline: none;
-            }
-            QListWidget#replayGallery::item {
-                background: transparent;
-                border: none;
-                padding: 0px;
-            }
-            QListWidget#replayGallery::item:selected {
-                background: transparent;
-            }
-        """)
+        self.replay_list.setStyleSheet('\n    QListWidget#replayGallery {\n        background-color: #15151F;\n        border: 1px solid #303047;\n        border-radius: 13px;\n        padding: 10px;\n        outline: none;\n    }\n\n    QListWidget#replayGallery::item {\n        background: transparent;\n        border: none;\n        padding: 0px;\n    }\n\n    QListWidget#replayGallery::item:selected {\n        background: transparent;\n    }\n')
 
         self.replay_list.itemDoubleClicked.connect(
             self.open_replay_item
@@ -1135,6 +932,9 @@ class LDesktop(QMainWindow):
 
         self.live_page.watch_requested.connect(
             self.open_live_viewer
+        )
+        self.live_page.capture_source_changed.connect(
+            self.on_live_capture_source_changed
         )
 
         layout.addWidget(self.live_page, 1)
@@ -1388,6 +1188,12 @@ class LDesktop(QMainWindow):
         return row
 
     def navigate(self, index):
+        if (
+            self.replay_player_page is not None
+            and self.page_stack.currentWidget() is self.replay_player_page
+        ):
+            self.replay_player_page.stop()
+
         self.page_stack.setCurrentIndex(index)
 
         titles = [
@@ -1408,46 +1214,56 @@ class LDesktop(QMainWindow):
     # ESTADO E ATUALIZAÇÃO VISUAL
     # ---------------------------------------------------------
 
+
     def refresh_runtime_status(self):
         running = self.recorder.is_running()
 
-        if running:
-            self.replay_status_label.setText("Ativo")
-            self.replay_status_label.setStyleSheet(
-                "color: #70d6a1; font-size: 22px; font-weight: bold;"
-            )
-            self.replay_detail_label.setText(
-                "Capturando continuamente os últimos 30 segundos."
-            )
-            self.sidebar_status_label.setText("Em execução")
+        if hasattr(self, "overview_capture_status"):
+            if running:
+                self.overview_capture_status.setText(
+                    "PRONTO PARA SALVAR"
+                )
+                self.overview_capture_status.setStyleSheet(
+                    "color: #70D9A5; font-size: 11px; "
+                    "font-weight: bold;"
+                )
+                self.overview_save_button.setEnabled(True)
+                self.overview_save_button.setToolTip("")
+            else:
+                self.overview_capture_status.setText(
+                    "CAPTURA PAUSADA"
+                )
+                self.overview_capture_status.setStyleSheet(
+                    "color: #E8BF79; font-size: 11px; "
+                    "font-weight: bold;"
+                )
+                self.overview_save_button.setEnabled(False)
+                self.overview_save_button.setToolTip(
+                    "A captura est? pausada no momento."
+                )
 
-        else:
-            self.replay_status_label.setText("Parado")
-            self.replay_status_label.setStyleSheet(
-                "color: #e5bc71; font-size: 22px; font-weight: bold;"
+        if hasattr(self, "sidebar_status_label"):
+            self.sidebar_status_label.setText(
+                "Pronto" if running else "Captura pausada"
             )
-            self.replay_detail_label.setText(
-                "O Replay Buffer está pausado."
-            )
-            self.sidebar_status_label.setText("Buffer pausado")
 
         settings = load_audio_settings()
         microphone_name = settings.get(
             "microphone_name",
-            "Padrão do Windows",
+            "Padr?o do Windows",
         )
 
-        if running:
-            self.audio_status_label.setText("Captura iniciada")
-            self.audio_detail_label.setText(
-                f"Entrada configurada: {microphone_name}. "
-                "Consulte a seção Áudio para testar."
-            )
-        else:
-            self.audio_status_label.setText("Buffer parado")
-            self.audio_detail_label.setText(
-                "A captura de áudio será retomada ao iniciar o Replay Buffer."
-            )
+        if hasattr(self, "audio_status_label"):
+            if running:
+                self.audio_status_label.setText("Ativo")
+                self.audio_detail_label.setText(
+                    f"Entrada configurada: {microphone_name}."
+                )
+            else:
+                self.audio_status_label.setText("Pausado")
+                self.audio_detail_label.setText(
+                    "A captura de ?udio est? temporariamente pausada."
+                )
 
         try:
             connected = bool(get_device_token())
@@ -1455,38 +1271,38 @@ class LDesktop(QMainWindow):
             print(f"[L DESKTOP] Erro ao verificar dispositivo: {error}")
             connected = False
 
-        if connected:
-            self.discord_status_label.setText("Conectado")
-            self.discord_status_label.setStyleSheet(
-                "color: #70d6a1; font-size: 22px; font-weight: bold;"
-            )
-            self.discord_detail_label.setText(
-                "Dispositivo vinculado ao Discord."
-            )
-        else:
-            self.discord_status_label.setText("Não vinculado")
-            self.discord_status_label.setStyleSheet(
-                "color: #e5bc71; font-size: 22px; font-weight: bold;"
-            )
-            self.discord_detail_label.setText(
-                "Vincule o dispositivo para enviar arquivos."
-            )
+        if hasattr(self, "discord_status_label"):
+            if connected:
+                self.discord_status_label.setText("Conectado")
+                self.discord_status_label.setStyleSheet(
+                    "color: #70D9A5; font-size: 22px; "
+                    "font-weight: bold;"
+                )
+                self.discord_detail_label.setText(
+                    "Dispositivo vinculado ao Discord."
+                )
+            else:
+                self.discord_status_label.setText("N?o vinculado")
+                self.discord_status_label.setStyleSheet(
+                    "color: #E8BF79; font-size: 22px; "
+                    "font-weight: bold;"
+                )
+                self.discord_detail_label.setText(
+                    "Vincule seu dispositivo para sincronizar arquivos."
+                )
 
-        self.queue_status_label.setText(str(self.pending_count))
+        pending = getattr(self, "pending_count", 0)
 
-        if self.pending_count:
+        if hasattr(self, "queue_status_label"):
+            self.queue_status_label.setText(str(pending))
             self.queue_detail_label.setText(
-                "Arquivos aguardando envio ou confirmação."
-            )
-        else:
-            self.queue_detail_label.setText(
-                "Nenhum arquivo pendente."
+                "Arquivos aguardando envio."
+                if pending else "Tudo sincronizado."
             )
 
         if hasattr(self, "tray_replay_action"):
             self.tray_replay_action.setText(
-                "Pausar Replay Buffer" if running
-                else "Iniciar Replay Buffer"
+                "Pausar captura" if running else "Retomar captura"
             )
 
     def set_replay_favorite(self, filepath, favorite):
@@ -1589,30 +1405,7 @@ class LDesktop(QMainWindow):
                 )
         )
 
-        card.setStyleSheet("""
-            QFrame#replayCard {
-                background-color: #191925;
-                border: 1px solid #303044;
-                border-radius: 10px;
-            }
-            QFrame#replayCard:hover {
-                border: 1px solid #7657e8;
-                background-color: #20202f;
-            }
-            QLabel#replayGameLabel {
-                color: #e7e2fa;
-                font-size: 12px;
-                font-weight: bold;
-                background: transparent;
-                border: none;
-            }
-            QLabel#replayMetadataLabel {
-                color: #9291a8;
-                font-size: 10px;
-                background: transparent;
-                border: none;
-            }
-        """)
+        card.setStyleSheet('\n    QFrame#replayCard {\n        background-color: #191923;\n        border: 1px solid #303047;\n        border-radius: 13px;\n    }\n\n    QFrame#replayCard:hover {\n        border: 1px solid #8063ED;\n        background-color: #20202E;\n    }\n\n    QLabel#replayGameLabel {\n        color: #EAE5FA;\n        font-size: 12px;\n        font-weight: bold;\n        background: transparent;\n        border: none;\n    }\n\n    QLabel#replayMetadataLabel {\n        color: #9997AD;\n        font-size: 10px;\n        background: transparent;\n        border: none;\n    }\n')
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -1626,14 +1419,7 @@ class LDesktop(QMainWindow):
         preview = QLabel()
         preview.setFixedSize(220, 124)
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        preview.setStyleSheet("""
-            QLabel {
-                background-color: #101018;
-                color: #9291a8;
-                border-radius: 7px;
-                border: none;
-            }
-        """)
+        preview.setStyleSheet('\n    QLabel {\n        background-color: #101018;\n        color: #9997AD;\n        border-radius: 8px;\n        border: 1px solid #292938;\n    }\n')
         preview.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
@@ -1968,6 +1754,7 @@ class LDesktop(QMainWindow):
         print(message)
         self.last_queue_message = message
 
+
     def on_capture_queue_pending_changed(self, count):
         self.pending_count = count
 
@@ -1978,6 +1765,13 @@ class LDesktop(QMainWindow):
         else:
             print("[L DESKTOP] Fila de envios vazia.")
 
+        if hasattr(self, "queue_status_label"):
+            self.queue_status_label.setText(str(count))
+            self.queue_detail_label.setText(
+                "Arquivos aguardando envio."
+                if count else "Tudo sincronizado."
+            )
+
     # ---------------------------------------------------------
     # WORKERS E ATALHOS
     # ---------------------------------------------------------
@@ -1986,10 +1780,21 @@ class LDesktop(QMainWindow):
     def open_live_viewer(self, user_id, display_name):
         if (
             self.live_viewer_dialog
-            and self.live_viewer_dialog.isVisible()
+            and not getattr(self.live_viewer_dialog, "_closing", False)
+            and (
+                self.live_viewer_dialog.isVisible()
+                or getattr(
+                    self.live_viewer_dialog,
+                    "is_picture_in_picture",
+                    False,
+                )
+            )
         ):
-            self.live_viewer_dialog.raise_()
-            self.live_viewer_dialog.activateWindow()
+            if self.live_viewer_dialog.is_picture_in_picture:
+                self.live_viewer_dialog.exit_picture_in_picture()
+            else:
+                self.live_viewer_dialog.raise_()
+                self.live_viewer_dialog.activateWindow()
             return
 
         self.live_viewer_dialog = LiveViewerDialog(
@@ -1999,6 +1804,26 @@ class LDesktop(QMainWindow):
         )
 
         self.live_viewer_dialog.show()
+
+    def on_live_capture_source_changed(
+        self,
+        capture_type,
+        source_info,
+    ):
+        publisher = getattr(self, "live_publisher", None)
+
+        if publisher is None or not publisher.isRunning():
+            return
+
+        try:
+            publisher.request_capture_source(
+                capture_type,
+                source_info,
+            )
+        except Exception as error:
+            print(
+                f"[LIVE STREAM] Erro ao solicitar troca de fonte: {error}"
+            )
 
     def toggle_live_sharing(self):
 
@@ -2012,7 +1837,37 @@ class LDesktop(QMainWindow):
             self.live_publisher.stop()
             return
 
-        publisher = LiveScreenPublisher(self)
+        try:
+            stream_settings = self.live_page.get_stream_settings()
+        except ValueError as error:
+            QMessageBox.warning(
+                self,
+                "Configurações da transmissão",
+                str(error),
+            )
+            return
+
+        publisher = LiveScreenPublisher(
+            window_info=stream_settings["window_info"],
+            fps=stream_settings["fps"],
+            quality=stream_settings["quality"],
+            capture_type=stream_settings["capture_type"],
+            monitor_info=stream_settings["monitor_info"],
+            parent=self,
+        )
+
+        selected_source = (
+            stream_settings["monitor_info"]["display"]
+            if stream_settings["capture_type"] == "monitor"
+            else stream_settings["window_info"]["title"]
+        )
+
+        print(
+            f"[LIVE CONFIG] Iniciando: "
+            f"{selected_source} | "
+            f"{stream_settings['fps']} FPS | "
+            f"{stream_settings['quality']}"
+        )
 
         self.live_publisher = publisher
 
@@ -2263,20 +2118,53 @@ class LDesktop(QMainWindow):
             QUrl.fromLocalFile(str(DATA_DIR))
         )
 
+
     def open_replay_path(self, filepath):
-        filepath = Path(filepath)
+        filepath = Path(filepath).expanduser()
 
         if not filepath.is_file():
             QMessageBox.warning(
                 self,
-                "Replay nao encontrado",
+                "Replay n?o encontrado",
                 str(filepath),
             )
             return
 
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(filepath))
-        )
+        if self.replay_player_page is None:
+            QMessageBox.warning(
+                self,
+                "Player indispon?vel",
+                "N?o foi poss?vel inicializar o player de replays.",
+            )
+            return
+
+        try:
+            self.replay_player_page.open_file(filepath)
+
+            self.page_stack.setCurrentWidget(
+                self.replay_player_page
+            )
+
+            self.current_page_title.setText(
+                "Player de replay"
+            )
+
+            for index, button in enumerate(self.nav_buttons):
+                button.setChecked(index == 1)
+
+        except Exception as error:
+            QMessageBox.warning(
+                self,
+                "Erro ao abrir replay",
+                str(error),
+            )
+
+    def return_to_replays(self):
+        if self.replay_player_page is not None:
+            self.replay_player_page.stop()
+
+        self.navigate(1)
+
 
     def open_replay_item(self, item):
         filepath = item.data(Qt.ItemDataRole.UserRole)
@@ -2319,7 +2207,7 @@ class LDesktop(QMainWindow):
         replay_action.triggered.connect(self.save_replay)
 
         self.tray_replay_action = QAction(
-            "Pausar Replay Buffer",
+            "Pausar captura",
             self,
         )
         self.tray_replay_action.triggered.connect(
@@ -2534,6 +2422,13 @@ class LDesktop(QMainWindow):
     # ---------------------------------------------------------
 
     def cleanup(self):
+
+        try:
+            if self.replay_player_page is not None:
+                self.replay_player_page.stop()
+        except Exception as error:
+            print(f"[REPLAY PLAYER] Erro ao encerrar player: {error}")
+
         print("[L DESKTOP] Encerrando...")
 
         try:
@@ -2545,7 +2440,14 @@ class LDesktop(QMainWindow):
                 self.live_publisher.wait(15000)
             if (
                 self.live_viewer_dialog
-                and self.live_viewer_dialog.isVisible()
+                and (
+                    self.live_viewer_dialog.isVisible()
+                    or getattr(
+                        self.live_viewer_dialog,
+                        "is_picture_in_picture",
+                        False,
+                    )
+                )
             ):
                 self.live_viewer_dialog.close()
 

@@ -38,3 +38,11 @@ segment_*.ts
 
 # Dados antigos dentro do código-fonte
 src/data/
+
+# Capturador auxiliar .NET - artefatos gerados
+/bin/LiveAudioCapture/
+/tools/LiveAudioCapture/bin/
+/tools/LiveAudioCapture/obj/
+
+# Backups locais criados durante desenvolvimento
+*.bak-*

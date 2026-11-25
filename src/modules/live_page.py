@@ -1,6 +1,5 @@
-from PySide6.QtCore import Qt, QSize, QUrl
+from PySide6.QtCore import Qt, QSize, QUrl, Signal, QTimer
 from PySide6.QtGui import QPainter, QPainterPath, QPixmap
-from PySide6.QtCore import Qt, QSize, QUrl, Signal
 
 from PySide6.QtNetwork import (
     QNetworkAccessManager,
@@ -12,10 +11,17 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QPushButton,
+    QComboBox,
     QVBoxLayout,
     QHBoxLayout,
     QScrollArea,
 )
+
+from core.live_settings import (
+    load_live_settings,
+    save_live_settings,
+)
+from modules.live_capture import list_capture_windows, list_capture_monitors
 
 
 class LiveFriendCard(QFrame):
@@ -26,38 +32,7 @@ class LiveFriendCard(QFrame):
         self.setObjectName("liveFriendCard")
         self.avatar_url = ""
 
-        self.setStyleSheet("""
-            QFrame#liveFriendCard {
-                background-color: #191925;
-                border: 1px solid #2d2d40;
-                border-radius: 10px;
-            }
-
-            QFrame#liveFriendCard:hover {
-                border-color: #51417d;
-            }
-
-            QLabel#liveFriendName {
-                color: #f0edf9;
-                font-size: 13px;
-                font-weight: bold;
-            }
-
-            QLabel#liveFriendUsername {
-                color: #85849b;
-                font-size: 11px;
-            }
-
-            QLabel#liveFriendDiscord {
-                color: #9291a8;
-                font-size: 10px;
-            }
-
-            QLabel#liveFriendStatus {
-                font-size: 11px;
-                font-weight: bold;
-            }
-        """)
+        self.setStyleSheet('\n    QFrame#liveFriendCard {\n        background-color: #191923;\n        border: 1px solid #303047;\n        border-radius: 13px;\n    }\n\n    QFrame#liveFriendCard:hover {\n        border-color: #62528E;\n        background-color: #1D1C2A;\n    }\n\n    QLabel#liveFriendName {\n        color: #F0EDF9;\n        font-size: 13px;\n        font-weight: bold;\n    }\n\n    QLabel#liveFriendUsername {\n        color: #9997AD;\n        font-size: 11px;\n    }\n\n    QLabel#liveFriendDiscord {\n        color: #9290A7;\n        font-size: 10px;\n    }\n\n    QLabel#liveFriendStatus {\n        font-size: 11px;\n        font-weight: bold;\n    }\n')
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(13, 12, 13, 12)
@@ -67,15 +42,7 @@ class LiveFriendCard(QFrame):
         self.avatar.setFixedSize(46, 46)
         self.avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.avatar.setStyleSheet("""
-            QLabel {
-                background-color: #30284d;
-                color: #d2c8ff;
-                border-radius: 23px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-        """)
+        self.avatar.setStyleSheet('\n    QLabel {\n        background-color: #30284D;\n        color: #D7CDFF;\n        border: 1px solid #51417D;\n        border-radius: 23px;\n        font-size: 14px;\n        font-weight: bold;\n    }\n')
 
         layout.addWidget(self.avatar)
 
@@ -112,25 +79,7 @@ class LiveFriendCard(QFrame):
         self.watch_button.setFixedWidth(90)
         self.watch_button.setEnabled(False)
 
-        self.watch_button.setStyleSheet("""
-            QPushButton {
-                background-color: #30284d;
-                color: #d2c8ff;
-                border: 1px solid #51417d;
-                border-radius: 7px;
-                padding: 8px;
-            }
-
-            QPushButton:hover {
-                background-color: #51417d;
-            }
-
-            QPushButton:disabled {
-                color: #666477;
-                background-color: #20202f;
-                border-color: #303044;
-            }
-        """)
+        self.watch_button.setStyleSheet('\n    QPushButton {\n        background-color: #2D2548;\n        color: #D7CDFF;\n        border: 1px solid #51417D;\n        border-radius: 8px;\n        padding: 8px 12px;\n        font-weight: bold;\n    }\n\n    QPushButton:hover {\n        background-color: #403363;\n        border-color: #8065E8;\n    }\n\n    QPushButton:disabled {\n        color: #77758A;\n        background-color: #20202E;\n        border-color: #303047;\n    }\n')
 
         self.watch_button.clicked.connect(
             self.request_watch
@@ -174,12 +123,12 @@ class LiveFriendCard(QFrame):
         if live_online:
             self.status_label.setText("Online")
             self.status_label.setStyleSheet(
-                "color: #70d6a1;"
+                'color: #70D9A5;'
             )
         else:
             self.status_label.setText("Offline")
             self.status_label.setStyleSheet(
-                "color: #85849b;"
+                'color: #9997AD;'
             )
 
         avatar_url = friend.get("avatar") or ""
@@ -237,54 +186,19 @@ class LiveFriendCard(QFrame):
 
 class LivePage(QWidget):
     watch_requested = Signal(str, str)
+    capture_source_changed = Signal(str, object)
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._presence_online = False
         self._stream_state = "idle"
+        self._saved_live_settings = load_live_settings()
+        self._capture_sources = {}
 
         self.setObjectName("livePage")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.setStyleSheet("""
-            QWidget#livePage {
-                background-color: #11111a;
-            }
-
-            QScrollArea#liveScrollArea {
-                background-color: #11111a;
-                border: none;
-            }
-
-            QWidget#liveScrollViewport {
-                background-color: #11111a;
-            }
-
-            QWidget#liveFriendsContainer {
-                background-color: #11111a;
-            }
-
-            QScrollBar:vertical {
-                background-color: #11111a;
-                width: 8px;
-                margin: 0px;
-            }
-
-            QScrollBar::handle:vertical {
-                background-color: #393950;
-                border-radius: 4px;
-                min-height: 25px;
-            }
-
-            QScrollBar::handle:vertical:hover {
-                background-color: #62528e;
-            }
-
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
+        self.setStyleSheet('\n    QWidget#livePage {\n        background-color: #101018;\n    }\n\n    QScrollArea#liveScrollArea {\n        background-color: #101018;\n        border: none;\n    }\n\n    QWidget#liveScrollViewport,\n    QWidget#liveFriendsContainer {\n        background-color: #101018;\n    }\n\n    QScrollBar:vertical {\n        background-color: #101018;\n        width: 9px;\n        margin: 2px;\n    }\n\n    QScrollBar::handle:vertical {\n        background-color: #39394D;\n        border-radius: 4px;\n        min-height: 28px;\n    }\n\n    QScrollBar::handle:vertical:hover {\n        background-color: #62577F;\n    }\n\n    QScrollBar::add-line:vertical,\n    QScrollBar::sub-line:vertical {\n        height: 0px;\n    }\n')
 
         self.friend_cards = {}
         self.avatar_cache = {}
@@ -342,6 +256,96 @@ class LivePage(QWidget):
         root.addWidget(connection_card)
 
         # -------------------------------------------------
+        # CONFIGURAÇÕES DA TRANSMISSÃO
+        # -------------------------------------------------
+
+        settings_card = QFrame()
+        settings_card.setObjectName("card")
+        settings_layout = QVBoxLayout(settings_card)
+        settings_layout.setContentsMargins(17, 14, 17, 14)
+        settings_layout.setSpacing(10)
+
+        settings_title = QLabel("CONFIGURAÇÕES DA TRANSMISSÃO")
+        settings_title.setObjectName("cardTitle")
+        settings_layout.addWidget(settings_title)
+
+        window_row = QHBoxLayout()
+        window_label = QLabel("Fonte")
+        window_label.setMinimumWidth(65)
+
+        self.window_combo = QComboBox()
+        self.window_combo.setMinimumWidth(260)
+        self.window_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.window_combo.setMinimumContentsLength(28)
+
+        window_row.addWidget(window_label)
+        window_row.addWidget(self.window_combo, 1)
+        settings_layout.addLayout(window_row)
+
+        quality_row = QHBoxLayout()
+
+        fps_label = QLabel("Quadros por segundo")
+        self.fps_combo = QComboBox()
+        for fps in (15, 30, 60):
+            self.fps_combo.addItem(f"{fps} FPS", fps)
+
+        quality_label = QLabel("Qualidade")
+        self.quality_combo = QComboBox()
+        self.quality_combo.addItem("Econômica", "Econômica")
+        self.quality_combo.addItem("Equilibrada", "Equilibrada")
+        self.quality_combo.addItem("Alta", "Alta")
+
+        quality_row.addWidget(fps_label)
+        quality_row.addWidget(self.fps_combo)
+        quality_row.addSpacing(12)
+        quality_row.addWidget(quality_label)
+        quality_row.addWidget(self.quality_combo)
+        quality_row.addStretch()
+
+        settings_layout.addLayout(quality_row)
+
+        self.live_settings_status = QLabel(
+            "Selecione a janela que deseja transmitir."
+        )
+        self.live_settings_status.setObjectName("muted")
+        settings_layout.addWidget(self.live_settings_status)
+
+        self.fps_combo.setCurrentIndex(
+            self.fps_combo.findData(self._saved_live_settings["fps"])
+        )
+        self.quality_combo.setCurrentIndex(
+            self.quality_combo.findData(
+                self._saved_live_settings["quality"]
+            )
+        )
+
+        self.refresh_capture_windows()
+
+        self.window_combo.currentIndexChanged.connect(
+            self._save_live_preferences
+        )
+        self.window_combo.currentIndexChanged.connect(
+            self._notify_capture_source_changed
+        )
+
+        self._capture_refresh_timer = QTimer(self)
+        self._capture_refresh_timer.setInterval(5000)
+        self._capture_refresh_timer.timeout.connect(
+            self.refresh_capture_windows
+        )
+        self._capture_refresh_timer.start()
+        self.fps_combo.currentIndexChanged.connect(
+            self._save_live_preferences
+        )
+        self.quality_combo.currentIndexChanged.connect(
+            self._save_live_preferences
+        )
+
+        root.addWidget(settings_card)
+
+        # -------------------------------------------------
         # LISTA DE MEMBROS
         # -------------------------------------------------
 
@@ -379,7 +383,7 @@ class LivePage(QWidget):
 
         self.scroll_area.setStyleSheet("""
             QScrollArea {
-                background-color: #11111a;
+                background-color: #101018;
                 border: none;
             }
         """)
@@ -393,7 +397,7 @@ class LivePage(QWidget):
         )
         viewport.setAutoFillBackground(True)
         viewport.setStyleSheet(
-            "background-color: #11111a;"
+            "background-color: #101018;"
         )
 
         # Container dos membros.
@@ -407,7 +411,7 @@ class LivePage(QWidget):
         )
         self.friends_container.setAutoFillBackground(True)
         self.friends_container.setStyleSheet(
-            "background-color: #11111a;"
+            "background-color: #101018;"
         )
 
         self.friends_layout = QVBoxLayout(
@@ -427,22 +431,178 @@ class LivePage(QWidget):
 
         root.addWidget(self.scroll_area, 1)
 
-        note = QLabel(
-            "A presença indica que o L Desktop está aberto. "
-            "Isso não significa que o membro esteja transmitindo."
-        )
-
-        note.setObjectName("muted")
-        note.setWordWrap(True)
-
-        root.addWidget(note)
-
         self.scroll_area.hide()
 
-    # -------------------------------------------------
-    # ESTADO DA CONEXÃO
-    # -------------------------------------------------
+    def refresh_capture_windows(self):
+        saved = self._saved_live_settings
+        current_key = self.window_combo.currentData()
 
+        self.window_combo.blockSignals(True)
+        self.window_combo.clear()
+        self._capture_sources.clear()
+
+        try:
+            monitors = list_capture_monitors()
+        except Exception as error:
+            monitors = []
+            self.live_settings_status.setText(
+                f"Não foi possível listar monitores: {error}"
+            )
+
+        try:
+            windows = list_capture_windows()
+        except Exception as error:
+            windows = []
+            self.live_settings_status.setText(
+                f"Não foi possível listar janelas: {error}"
+            )
+
+        # Monitores são fontes individuais, nunca combinados.
+        for monitor in monitors:
+            key = f"monitor::{monitor['id']}"
+            self._capture_sources[key] = ("monitor", monitor)
+            self.window_combo.addItem(monitor["display"], key)
+
+        if monitors and windows:
+            self.window_combo.insertSeparator(self.window_combo.count())
+
+        for window in windows:
+            key = f"window::{window['hwnd']}"
+            self._capture_sources[key] = ("window", window)
+            self.window_combo.addItem(window["display"], key)
+
+        selected_key = (
+            current_key
+            if current_key in self._capture_sources
+            else None
+        )
+
+        if selected_key is None:
+            if saved.get("source_type") == "monitor":
+                monitor_id = saved.get("monitor_id", "")
+                if monitor_id:
+                    selected_key = f"monitor::{monitor_id}"
+            else:
+                saved_title = saved.get("window_title", "")
+                saved_process = saved.get("process_name", "")
+
+                for key, (kind, info) in self._capture_sources.items():
+                    if (
+                        kind == "window"
+                        and info["title"] == saved_title
+                        and info["process_name"] == saved_process
+                    ):
+                        selected_key = key
+                        break
+
+        selected_index = (
+            self.window_combo.findData(selected_key)
+            if selected_key else -1
+        )
+
+        if selected_index >= 0:
+            self.window_combo.setCurrentIndex(selected_index)
+            selected_kind = self._capture_sources[selected_key][0]
+            self.live_settings_status.setText(
+                "Monitor salvo localizado."
+                if selected_kind == "monitor"
+                else "Janela salva localizada."
+            )
+        else:
+            saved_source = (
+                saved.get("monitor_id")
+                if saved.get("source_type") == "monitor"
+                else saved.get("window_title")
+            )
+
+            if saved_source:
+                self.window_combo.insertItem(
+                    0,
+                    f"Fonte salva não encontrada — {saved_source}",
+                    None,
+                )
+                self.window_combo.setCurrentIndex(0)
+                self.live_settings_status.setText(
+                    "A fonte salva não está disponível. Selecione outra."
+                )
+            else:
+                self.window_combo.setCurrentIndex(-1)
+                self.live_settings_status.setText(
+                    f"{len(monitors)} monitor(es) e "
+                    f"{len(windows)} janela(s) encontrados."
+                )
+
+        self.window_combo.blockSignals(False)
+
+    def _save_live_preferences(self, *_):
+        source = self._capture_sources.get(
+            self.window_combo.currentData()
+        )
+
+        if source is None:
+            return
+
+        capture_type, source_info = source
+
+        try:
+            kwargs = (
+                {"monitor_info": source_info}
+                if capture_type == "monitor"
+                else {"window_info": source_info}
+            )
+
+            self._saved_live_settings = save_live_settings(
+                self.fps_combo.currentData(),
+                self.quality_combo.currentData(),
+                capture_type=capture_type,
+                **kwargs,
+            )
+            self.live_settings_status.setText(
+                "Preferências salvas automaticamente."
+            )
+        except Exception as error:
+            self.live_settings_status.setText(
+                f"Erro ao salvar preferências: {error}"
+            )
+
+    def _notify_capture_source_changed(self, *_):
+        source = self._capture_sources.get(
+            self.window_combo.currentData()
+        )
+
+        if source is None:
+            return
+
+        capture_type, source_info = source
+
+        self.capture_source_changed.emit(
+            str(capture_type),
+            dict(source_info),
+        )
+
+    def get_stream_settings(self):
+        source = self._capture_sources.get(
+            self.window_combo.currentData()
+        )
+
+        if source is None:
+            raise ValueError(
+                "Selecione uma janela ou um monitor individual."
+            )
+
+        capture_type, source_info = source
+
+        return {
+            "capture_type": capture_type,
+            "window_info": (
+                dict(source_info) if capture_type == "window" else None
+            ),
+            "monitor_info": (
+                dict(source_info) if capture_type == "monitor" else None
+            ),
+            "fps": int(self.fps_combo.currentData()),
+            "quality": str(self.quality_combo.currentData()),
+        }
 
     def set_connection_status(self, online, message):
 
@@ -451,12 +611,12 @@ class LivePage(QWidget):
         if online:
             self.connection_label.setText("Conectado")
             self.connection_label.setStyleSheet(
-                "color: #70d6a1; font-size: 18px; font-weight: bold;"
+                'color: #70D9A5; font-size: 18px; font-weight: bold;'
             )
         else:
             self.connection_label.setText("Desconectado")
             self.connection_label.setStyleSheet(
-                "color: #e5bc71; font-size: 18px; font-weight: bold;"
+                'color: #E8BF79; font-size: 18px; font-weight: bold;'
             )
 
         self.connection_detail.setText(message)
