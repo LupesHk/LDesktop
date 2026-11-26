@@ -1,4 +1,5 @@
 
+import json
 import re
 import shutil
 import subprocess
@@ -147,7 +148,7 @@ def capture_screen():
         return False
 
 
-def queue_replay(source):
+def queue_replay(source, game_name=None):
     """Copia o replay salvo para a fila sem alterar o original."""
     try:
         source = Path(source)
@@ -189,17 +190,32 @@ def queue_replay(source):
             REPLAY_QUEUE_DIR / f"replay_{replay_id}.mp4.tmp"
         )
 
+        normalized_game_name = str(
+            game_name or "Sem jogo identificado"
+        ).strip() or "Sem jogo identificado"
+        normalized_game_name = normalized_game_name[:100]
+
+        metadata = destination.with_suffix(".json")
+        metadata_temporary = (
+            REPLAY_QUEUE_DIR / f"replay_{replay_id}.json.tmp"
+        )
+
         shutil.copy2(source, temporary)
+        with metadata_temporary.open("w", encoding="utf-8") as file:
+            json.dump(
+                {"gameName": normalized_game_name},
+                file,
+                ensure_ascii=False,
+            )
+
+        # Publica os metadados antes do MP4 para o worker nunca
+        # encontrar um replay novo sem o nome do jogo.
+        metadata_temporary.replace(metadata)
         temporary.replace(destination)
 
         print(
             f"[REPLAY QUEUE] Adicionado: {destination.name} "
             f"({size / 1024 / 1024:.2f} MiB)"
-        )
-
-        notify(
-            "Replay na fila",
-            "O replay foi salvo e será enviado ao Discord."
         )
 
         return True
@@ -218,6 +234,7 @@ def queue_replay(source):
 class CaptureQueueWorker(QThread):
     status = Signal(str)
     pending_changed = Signal(int)
+    capture_uploaded = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -345,6 +362,7 @@ class CaptureQueueWorker(QThread):
         if not device_token:
             raise RuntimeError("Dispositivo ainda não vinculado.")
 
+        request_data = None
         capture_match = CAPTURE_PATTERN.fullmatch(filepath.stem)
         replay_match = REPLAY_PATTERN.fullmatch(filepath.stem)
 
@@ -370,6 +388,20 @@ class CaptureQueueWorker(QThread):
                 self.prepare_replay_upload(filepath, file_id)
             )
 
+            game_name = "Sem jogo identificado"
+            metadata_path = filepath.with_suffix(".json")
+            try:
+                metadata = json.loads(
+                    metadata_path.read_text(encoding="utf-8")
+                )
+                candidate = metadata.get("gameName")
+                if isinstance(candidate, str) and candidate.strip():
+                    game_name = candidate.strip()[:100]
+            except (OSError, json.JSONDecodeError, AttributeError):
+                pass
+
+            request_data = {"gameName": game_name}
+
         else:
             raise RuntimeError("Arquivo de fila com nome inválido.")
 
@@ -388,6 +420,7 @@ class CaptureQueueWorker(QThread):
                             content_type
                         )
                     },
+                    data=request_data,
                     timeout=REQUEST_TIMEOUT
                 )
 
@@ -457,23 +490,25 @@ class CaptureQueueWorker(QThread):
             try:
                 self.send_file(filepath)
                 filepath.unlink(missing_ok=True)
+                if is_replay:
+                    try:
+                        filepath.with_suffix(".json").unlink(
+                            missing_ok=True
+                        )
+                    except OSError as error:
+                        print(
+                            f"[QUEUE] Não foi possível remover metadados: {error}"
+                        )
 
                 if is_replay:
                     self.status.emit(
                         f"[QUEUE] Replay enviado: {filepath.name}"
                     )
-                    notify(
-                        "Replay enviado",
-                        "O vídeo foi enviado ao Discord com sucesso."
-                    )
                 else:
                     self.status.emit(
                         f"[QUEUE] Captura enviada: {filepath.name}"
                     )
-                    notify(
-                        "Captura concluída",
-                        "Imagem enviada ao Discord com sucesso."
-                    )
+                    self.capture_uploaded.emit()
 
                 failures = 0
                 retry_at = 0

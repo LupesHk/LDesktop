@@ -12,11 +12,14 @@ from modules.live_viewer import LiveViewerDialog
 from modules.replay_player import ReplayPlayerWidget
 
 import keyboard
+from PySide6.QtGui import QKeySequence
+from PySide6.QtWidgets import QTabWidget, QKeySequenceEdit
 
 from PySide6.QtCore import Qt, QTimer, QThread, Signal, QSize, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QIcon
 
 from core.paths import DATA_DIR, SAVED_DIR, ICON
+from core.shortcut_config import load_shortcuts, save_shortcuts
 from core.audio_config import (
     list_microphones,
     get_default_microphone_info,
@@ -77,6 +80,7 @@ from core.audio_config import (
 
 from replay.recorder import ReplayRecorder
 from replay.game_profiles_dialog import GameProfilesDialog
+from core.success_toast import SuccessToast
 from modules.capture import (
     capture_screen,
     CaptureQueueWorker,
@@ -323,6 +327,7 @@ class LDesktop(QMainWindow):
 
         self.hotkey_id = None
         self.replay_hotkey_id = None
+        self.shortcuts = load_shortcuts()
 
         self.pending_count = 0
         self.last_queue_message = "Fila de envios vazia."
@@ -349,6 +354,7 @@ class LDesktop(QMainWindow):
         self.live_friends = []
         self._live_stream_states = None
         self._live_toasts = []
+        self._success_toasts = []
 
         self.live_service = LiveService(self)
 
@@ -503,9 +509,6 @@ class LDesktop(QMainWindow):
         topbar.addWidget(self.current_page_title)
         topbar.addStretch()
 
-        connection_button = QPushButton("Conexão Discord")
-        connection_button.clicked.connect(self.open_link_window)
-        topbar.addWidget(connection_button)
 
         main_layout.addLayout(topbar)
 
@@ -1035,114 +1038,88 @@ class LDesktop(QMainWindow):
 
         return page
 
+# SETTINGS_REWORK_V1
     def build_settings_page(self):
         page, layout = self.page_container(
             "Configurações",
-            "Personalize o funcionamento do L Desktop."
+            "Organize e personalize o funcionamento do L Desktop."
         )
 
-        # ÁUDIO
-        # CONFIGURA??ES COM ROLAGEM VERTICAL
-        scroll_area = QScrollArea()
-        scroll_area.setObjectName("settingsScrollArea")
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.viewport().setObjectName("settingsScrollViewport")
-        scroll_area.setStyleSheet("""
-            QScrollArea#settingsScrollArea {
-                background-color: #11111a;
-                border: none;
+        tabs = QTabWidget()
+        tabs.setDocumentMode(True)
+        tabs.setMovable(False)
+        tabs.setStyleSheet("""
+            QTabWidget::pane {
+                background: #11111a;
+                border: 1px solid #29293a;
+                border-radius: 10px;
+                top: -1px;
             }
-            QWidget#settingsScrollViewport {
-                background-color: #11111a;
+            QTabBar::tab {
+                background: #191923;
+                color: #aaa7bd;
+                border: 1px solid #303047;
+                border-bottom: none;
+                padding: 10px 15px;
+                margin-right: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
             }
-            QWidget#settingsScrollContent {
-                background-color: #11111a;
+            QTabBar::tab:selected {
+                background: #30284d;
+                color: #d7cdff;
+                border-color: #51417d;
+                font-weight: bold;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #252536;
+                color: white;
             }
         """)
-        scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        layout.addWidget(tabs, 1)
+
+        def create_tab(title):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            scroll.setStyleSheet("""
+                QScrollArea {
+                    background: #11111a;
+                    border: none;
+                }
+                QScrollArea QWidget {
+                    background: #11111a;
+                }
+            """)
+
+            content = QWidget()
+            content_layout = QVBoxLayout(content)
+            content_layout.setContentsMargins(8, 12, 8, 12)
+            content_layout.setSpacing(15)
+            scroll.setWidget(content)
+            tabs.addTab(scroll, title)
+            return content_layout
+
+        def create_card(title):
+            card = QFrame()
+            card.setObjectName("card")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(18, 17, 18, 17)
+            card_layout.setSpacing(10)
+
+            heading = QLabel(title.upper())
+            heading.setObjectName("cardTitle")
+            card_layout.addWidget(heading)
+            return card, card_layout
+
+        # GERAL
+        general_layout = create_tab("Geral")
+        startup_card, startup_layout = create_card(
+            "Inicialização do Windows"
         )
-
-        content = QWidget()
-        content.setObjectName("settingsScrollContent")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(17)
-
-        scroll_area.setWidget(content)
-        layout.addWidget(scroll_area, 1)
-        layout = content_layout
-
-        audio_card = QFrame()
-        audio_card.setObjectName("card")
-
-        audio_layout = QVBoxLayout(audio_card)
-        audio_layout.setContentsMargins(18, 17, 18, 17)
-        audio_layout.setSpacing(11)
-
-        audio_title = QLabel("ÁUDIO E MICROFONE")
-        audio_title.setObjectName("cardTitle")
-
-        audio_description = QLabel(
-            "Selecione o microfone que será utilizado nos replays."
-        )
-        audio_description.setObjectName("muted")
-        audio_description.setWordWrap(True)
-
-        self.microphone_combo = QComboBox()
-        self.microphone_combo.setMinimumHeight(40)
-
-        refresh_button = QPushButton("Atualizar dispositivos")
-        refresh_button.clicked.connect(
-            self.refresh_microphone_devices
-        )
-
-        test_button = QPushButton("Testar microfone")
-        test_button.setObjectName("primaryButton")
-        self.microphone_test_button = test_button
-        test_button.clicked.connect(
-            self.test_selected_microphone
-        )
-
-        self.audio_test_status = QLabel(
-            "Selecione um microfone para começar."
-        )
-        self.audio_test_status.setObjectName("muted")
-        self.audio_test_status.setWordWrap(True)
-
-        audio_buttons = QHBoxLayout()
-        audio_buttons.addWidget(refresh_button)
-        audio_buttons.addWidget(test_button)
-
-        save_buttons = QHBoxLayout()
-
-        apply_button = QPushButton("Salvar e aplicar")
-        apply_button.setObjectName("primaryButton")
-        apply_button.clicked.connect(
-            self.apply_microphone_selection
-        )
-
-        save_buttons.addWidget(apply_button)
-
-        audio_layout.addWidget(audio_title)
-        audio_layout.addWidget(audio_description)
-        audio_layout.addWidget(self.microphone_combo)
-        audio_layout.addLayout(audio_buttons)
-        audio_layout.addLayout(save_buttons)
-        audio_layout.addWidget(self.audio_test_status)
-
-        layout.addWidget(audio_card)
-
-        startup_card = QFrame()
-        startup_card.setObjectName("card")
-
-        startup_layout = QVBoxLayout(startup_card)
-        startup_layout.setContentsMargins(18, 17, 18, 17)
-        startup_layout.setSpacing(9)
-
-        startup_title = QLabel("INICIALIZAÇÃO DO WINDOWS")
-        startup_title.setObjectName("cardTitle")
 
         self.startup_checkbox = QCheckBox(
             "Iniciar L Desktop com o Windows"
@@ -1161,28 +1138,129 @@ class LDesktop(QMainWindow):
         startup_description.setObjectName("muted")
         startup_description.setWordWrap(True)
 
-        startup_layout.addWidget(startup_title)
         startup_layout.addWidget(self.startup_checkbox)
         startup_layout.addWidget(startup_description)
+        general_layout.addWidget(startup_card)
+        general_layout.addStretch()
 
-        layout.addWidget(startup_card)
+        # ATALHOS
+        shortcuts_layout = create_tab("Atalhos")
+        shortcuts_card, shortcuts_box = create_card(
+            "Atalhos de teclado"
+        )
 
+        shortcuts_description = QLabel(
+            "Selecione um campo e pressione a combinação desejada. "
+            "Os atalhos funcionam mesmo quando o L Desktop está em segundo plano."
+        )
+        shortcuts_description.setObjectName("muted")
+        shortcuts_description.setWordWrap(True)
+        shortcuts_box.addWidget(shortcuts_description)
+
+        capture_row = QHBoxLayout()
+        capture_label = QLabel("Capturar tela")
+        capture_label.setObjectName("muted")
+        self.capture_shortcut_edit = QKeySequenceEdit()
+        self.capture_shortcut_edit.setMaximumSequenceLength(1)
+        self.capture_shortcut_edit.setMinimumWidth(190)
+        self.capture_shortcut_edit.setKeySequence(
+            QKeySequence(self.shortcuts["capture"])
+        )
+        capture_row.addWidget(capture_label, 1)
+        capture_row.addWidget(self.capture_shortcut_edit)
+        shortcuts_box.addLayout(capture_row)
+
+        replay_row = QHBoxLayout()
+        replay_label = QLabel("Salvar os últimos 30 segundos")
+        replay_label.setObjectName("muted")
+        self.replay_shortcut_edit = QKeySequenceEdit()
+        self.replay_shortcut_edit.setMaximumSequenceLength(1)
+        self.replay_shortcut_edit.setMinimumWidth(190)
+        self.replay_shortcut_edit.setKeySequence(
+            QKeySequence(self.shortcuts["replay"])
+        )
+        replay_row.addWidget(replay_label, 1)
+        replay_row.addWidget(self.replay_shortcut_edit)
+        shortcuts_box.addLayout(replay_row)
+
+        shortcut_buttons = QHBoxLayout()
+        save_shortcuts_button = QPushButton("Salvar atalhos")
+        save_shortcuts_button.setObjectName("primaryButton")
+        save_shortcuts_button.clicked.connect(
+            self.save_shortcut_settings
+        )
+
+        reset_shortcuts_button = QPushButton("Restaurar padrões")
+        reset_shortcuts_button.clicked.connect(
+            self.restore_default_shortcuts
+        )
+
+        shortcut_buttons.addWidget(save_shortcuts_button)
+        shortcut_buttons.addWidget(reset_shortcuts_button)
+        shortcut_buttons.addStretch()
+        shortcuts_box.addLayout(shortcut_buttons)
+
+        shortcuts_layout.addWidget(shortcuts_card)
+        shortcuts_layout.addStretch()
+
+        # ÁUDIO
+        audio_layout = create_tab("Áudio")
+        audio_card, audio_box = create_card("Áudio e microfone")
+
+        audio_description = QLabel(
+            "Selecione o microfone que será utilizado nos replays."
+        )
+        audio_description.setObjectName("muted")
+        audio_description.setWordWrap(True)
+
+        self.microphone_combo = QComboBox()
+        self.microphone_combo.setMinimumHeight(40)
+
+        audio_buttons = QHBoxLayout()
+        refresh_button = QPushButton("Atualizar dispositivos")
+        refresh_button.clicked.connect(
+            self.refresh_microphone_devices
+        )
+
+        test_button = QPushButton("Testar microfone")
+        test_button.setObjectName("primaryButton")
+        self.microphone_test_button = test_button
+        test_button.clicked.connect(
+            self.test_selected_microphone
+        )
+
+        audio_buttons.addWidget(refresh_button)
+        audio_buttons.addWidget(test_button)
+
+        apply_button = QPushButton("Salvar e aplicar")
+        apply_button.setObjectName("primaryButton")
+        apply_button.clicked.connect(
+            self.apply_microphone_selection
+        )
+
+        self.audio_test_status = QLabel(
+            "Selecione um microfone para começar."
+        )
+        self.audio_test_status.setObjectName("muted")
+        self.audio_test_status.setWordWrap(True)
+
+        audio_box.addWidget(audio_description)
+        audio_box.addWidget(self.microphone_combo)
+        audio_box.addLayout(audio_buttons)
+        audio_box.addWidget(apply_button)
+        audio_box.addWidget(self.audio_test_status)
+
+        audio_layout.addWidget(audio_card)
+        audio_layout.addStretch()
         self.refresh_microphone_devices()
 
-        # JOGOS E IDENTIFICACAO
-        games_card = QFrame()
-        games_card.setObjectName("card")
-
-        games_layout = QVBoxLayout(games_card)
-        games_layout.setContentsMargins(18, 17, 18, 17)
-        games_layout.setSpacing(9)
-
-        games_title = QLabel("JOGOS E IDENTIFICACAO")
-        games_title.setObjectName("cardTitle")
+        # JOGOS
+        games_layout = create_tab("Jogos")
+        games_card, games_box = create_card("Jogos e identificação")
 
         games_description = QLabel(
-            "Cadastre jogos, configure executaveis e "
-            "personalize o reconhecimento automatico."
+            "Cadastre jogos, configure executáveis e "
+            "personalize o reconhecimento automático."
         )
         games_description.setObjectName("muted")
         games_description.setWordWrap(True)
@@ -1191,47 +1269,56 @@ class LDesktop(QMainWindow):
         games_button.setObjectName("primaryButton")
         games_button.clicked.connect(self.open_game_profiles)
 
-        games_layout.addWidget(games_title)
-        games_layout.addWidget(games_description)
-        games_layout.addWidget(games_button)
+        games_box.addWidget(games_description)
+        games_box.addWidget(games_button)
+        games_layout.addWidget(games_card)
+        games_layout.addStretch()
 
-        layout.addWidget(games_card)
+        # DISCORD
+        discord_layout = create_tab("Discord")
+        discord_card, discord_box = create_card("Conexão Discord")
 
-        # ATALHOS
-        shortcuts = QFrame()
-        shortcuts.setObjectName("card")
+        try:
+            is_linked = bool(get_device_token())
+        except Exception as error:
+            print(f"[DISCORD] Não foi possível consultar o vínculo: {error}")
+            is_linked = False
 
-        shortcuts_layout = QVBoxLayout(shortcuts)
-        shortcuts_layout.setContentsMargins(18, 17, 18, 17)
-        shortcuts_layout.setSpacing(13)
-
-        shortcuts_title = QLabel("ATALHOS DE TECLADO")
-        shortcuts_title.setObjectName("cardTitle")
-        shortcuts_layout.addWidget(shortcuts_title)
-
-        shortcuts_layout.addLayout(
-            self.shortcut_row("F8", "Capturar tela")
+        discord_status = QLabel(
+            "Dispositivo vinculado ao Discord."
+            if is_linked
+            else "Dispositivo ainda não vinculado."
         )
-
-        shortcuts_layout.addLayout(
-            self.shortcut_row(
-                "F9",
-                "Salvar os últimos 30 segundos"
-            )
+        discord_status.setObjectName(
+            "successText" if is_linked else "warningText"
         )
+        discord_status.setWordWrap(True)
 
-        layout.addWidget(shortcuts)
+        discord_description = QLabel(
+            "Gerencie o vínculo entre este L Desktop e sua conta Discord."
+        )
+        discord_description.setObjectName("muted")
+        discord_description.setWordWrap(True)
+
+        discord_button = QPushButton("Gerenciar conexão Discord")
+        discord_button.setObjectName("primaryButton")
+        discord_button.clicked.connect(self.open_link_window)
+
+        discord_box.addWidget(discord_status)
+        discord_box.addWidget(discord_description)
+        discord_box.addWidget(discord_button)
+        discord_layout.addWidget(discord_card)
+        discord_layout.addStretch()
 
         # ARMAZENAMENTO
-        storage = QFrame()
-        storage.setObjectName("card")
+        storage_layout = create_tab("Armazenamento")
+        storage_card, storage_box = create_card("Armazenamento")
 
-        storage_layout = QVBoxLayout(storage)
-        storage_layout.setContentsMargins(18, 17, 18, 17)
-        storage_layout.setSpacing(9)
-
-        storage_title = QLabel("ARMAZENAMENTO")
-        storage_title.setObjectName("cardTitle")
+        storage_description = QLabel(
+            "Local onde o L Desktop mantém seus dados, capturas e replays."
+        )
+        storage_description.setObjectName("muted")
+        storage_description.setWordWrap(True)
 
         storage_path = QLabel(str(DATA_DIR))
         storage_path.setObjectName("muted")
@@ -1241,45 +1328,16 @@ class LDesktop(QMainWindow):
         )
 
         folder_button = QPushButton("Abrir pasta de dados")
-        folder_button.clicked.connect(
-            self.open_data_folder
-        )
+        folder_button.clicked.connect(self.open_data_folder)
 
-        storage_layout.addWidget(storage_title)
-        storage_layout.addWidget(storage_path)
-        storage_layout.addWidget(folder_button)
-
-        layout.addWidget(storage)
-        layout.addStretch()
+        storage_box.addWidget(storage_description)
+        storage_box.addWidget(storage_path)
+        storage_box.addWidget(folder_button)
+        storage_layout.addWidget(storage_card)
+        storage_layout.addStretch()
 
         return page
 
-
-    def shortcut_row(self, key, description):
-        row = QHBoxLayout()
-
-        key_label = QLabel(key)
-        key_label.setFixedWidth(58)
-        key_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        key_label.setStyleSheet("""
-            QLabel {
-                background-color: #30284d;
-                color: #d0c4ff;
-                border: 1px solid #51417d;
-                border-radius: 6px;
-                padding: 7px;
-                font-weight: bold;
-            }
-        """)
-
-        description_label = QLabel(description)
-        description_label.setObjectName("muted")
-
-        row.addWidget(key_label)
-        row.addWidget(description_label)
-        row.addStretch()
-
-        return row
 
     def navigate(self, index):
         if (
@@ -2083,10 +2141,58 @@ class LDesktop(QMainWindow):
             toast.move(x, y)
             y += toast.height() + spacing
 
+        self.position_success_toasts()
+
     def resizeEvent(self, event):
 
         super().resizeEvent(event)
         self.position_live_toasts()
+        self.position_success_toasts()
+
+    def on_capture_uploaded(self):
+        self.show_success_toast(
+            "PRINT ENVIADA",
+            "A captura de tela foi enviada ao Discord."
+        )
+
+    def show_success_toast(self, title, message):
+        while len(self._success_toasts) >= 3:
+            self._success_toasts[0].dismiss()
+
+        toast = SuccessToast(title, message)
+        toast.dismissed.connect(self.remove_success_toast)
+        self._success_toasts.append(toast)
+        self.position_success_toasts()
+        toast.show()
+        toast.raise_()
+
+    def remove_success_toast(self, toast):
+        if toast in self._success_toasts:
+            self._success_toasts.remove(toast)
+
+        toast.hide()
+        toast.deleteLater()
+        self.position_success_toasts()
+
+    def position_success_toasts(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+
+        geometry = screen.availableGeometry()
+        margin = 20
+        spacing = 10
+        x = geometry.right() - 340 - margin
+        y = geometry.top() + margin
+
+        # Mantém os avisos de sucesso abaixo dos avisos de transmissão ao vivo,
+        # evitando que duas notificações ocupem a mesma posição.
+        for live_toast in self._live_toasts:
+            y = max(y, live_toast.y() + live_toast.height() + spacing)
+
+        for toast in self._success_toasts:
+            toast.move(x, y)
+            y += toast.height() + spacing
 
     def start_capture_queue(self):
         self.capture_queue_worker = CaptureQueueWorker(self)
@@ -2098,22 +2204,150 @@ class LDesktop(QMainWindow):
         self.capture_queue_worker.pending_changed.connect(
             self.on_capture_queue_pending_changed
         )
+        self.capture_queue_worker.capture_uploaded.connect(
+            self.on_capture_uploaded
+        )
 
         self.capture_queue_worker.start()
 
-    def register_hotkeys(self):
-        self.hotkey_id = keyboard.add_hotkey(
-            "F8",
+    def _register_hotkey_pair(self, shortcuts):
+        capture_id = keyboard.add_hotkey(
+            shortcuts["capture"],
             self.capture_requested.emit,
         )
 
-        self.replay_hotkey_id = keyboard.add_hotkey(
-            "F9",
-            self.replay_requested.emit,
+        try:
+            replay_id = keyboard.add_hotkey(
+                shortcuts["replay"],
+                self.replay_requested.emit,
+            )
+        except Exception:
+            keyboard.remove_hotkey(capture_id)
+            raise
+
+        return capture_id, replay_id
+
+    def register_hotkeys(self):
+        try:
+            self.hotkey_id, self.replay_hotkey_id = (
+                self._register_hotkey_pair(self.shortcuts)
+            )
+        except Exception as error:
+            print(f"[L DESKTOP] Erro ao registrar atalhos: {error}")
+            raise
+
+        print(
+            f"[L DESKTOP] Atalho de captura registrado: "
+            f"{self.shortcuts['capture']}"
+        )
+        print(
+            f"[L DESKTOP] Atalho de replay registrado: "
+            f"{self.shortcuts['replay']}"
         )
 
-        print("[L DESKTOP] Atalho F8 registrado.")
-        print("[L DESKTOP] Atalho F9 registrado.")
+    def save_shortcut_settings(self):
+        capture = (
+            self.capture_shortcut_edit.keySequence()
+            .toString()
+            .strip()
+            .lower()
+        )
+        replay = (
+            self.replay_shortcut_edit.keySequence()
+            .toString()
+            .strip()
+            .lower()
+        )
+
+        if not capture or not replay:
+            QMessageBox.warning(
+                self,
+                "Atalhos incompletos",
+                "Defina um atalho para captura e outro para replay.",
+            )
+            return
+
+        if capture == replay:
+            QMessageBox.warning(
+                self,
+                "Conflito de atalhos",
+                "A captura e o replay precisam utilizar atalhos diferentes.",
+            )
+            return
+
+        previous = self.shortcuts.copy()
+        old_ids = (self.hotkey_id, self.replay_hotkey_id)
+
+        for hotkey_id in old_ids:
+            if hotkey_id is not None:
+                try:
+                    keyboard.remove_hotkey(hotkey_id)
+                except Exception as error:
+                    print(f"[SHORTCUTS] Erro ao remover atalho anterior: {error}")
+
+        self.hotkey_id = None
+        self.replay_hotkey_id = None
+        new_ids = None
+        updated = {"capture": capture, "replay": replay}
+
+        try:
+            new_ids = self._register_hotkey_pair(updated)
+            save_shortcuts(capture, replay)
+        except Exception as error:
+            if new_ids:
+                for hotkey_id in new_ids:
+                    try:
+                        keyboard.remove_hotkey(hotkey_id)
+                    except Exception:
+                        pass
+
+            try:
+                self.hotkey_id, self.replay_hotkey_id = (
+                    self._register_hotkey_pair(previous)
+                )
+            except Exception as restore_error:
+                print(
+                    f"[SHORTCUTS] Falha ao restaurar atalhos anteriores: "
+                    f"{restore_error}"
+                )
+
+            self.shortcuts = previous
+            self.capture_shortcut_edit.setKeySequence(
+                QKeySequence(previous["capture"])
+            )
+            self.replay_shortcut_edit.setKeySequence(
+                QKeySequence(previous["replay"])
+            )
+
+            QMessageBox.warning(
+                self,
+                "Não foi possível salvar",
+                f"O atalho não pôde ser registrado ou salvo:\n{error}",
+            )
+            return
+
+        self.hotkey_id, self.replay_hotkey_id = new_ids
+        self.shortcuts = updated
+
+        if hasattr(self, "tray_capture_action"):
+            self.tray_capture_action.setText(
+                f"Capturar tela ({capture.upper()})"
+            )
+        if hasattr(self, "tray_save_replay_action"):
+            self.tray_save_replay_action.setText(
+                f"Salvar replay ({replay.upper()})"
+            )
+
+        QMessageBox.information(
+            self,
+            "Atalhos atualizados",
+            "Os novos atalhos foram salvos e já estão ativos.",
+        )
+
+    def restore_default_shortcuts(self):
+        self.capture_shortcut_edit.setKeySequence(QKeySequence("F8"))
+        self.replay_shortcut_edit.setKeySequence(QKeySequence("F9"))
+        self.save_shortcut_settings()
 
     def start_replay_buffer(self):
         try:
@@ -2228,8 +2462,19 @@ class LDesktop(QMainWindow):
 
             print(f"[L DESKTOP] Replay salvo: {filepath}")
             self.last_replay_label.setText(filepath.name)
+            self.show_success_toast(
+                "REPLAY SALVO",
+                "Os últimos 30 segundos foram salvos."
+            )
 
-            if queue_replay(filepath):
+            if queue_replay(
+                filepath,
+                game_name=getattr(
+                    self.recorder,
+                    "last_saved_game",
+                    "Sem jogo identificado",
+                ),
+            ):
                 print("[L DESKTOP] Replay adicionado à fila de envio.")
 
             self.refresh_replay_history()
@@ -2352,11 +2597,15 @@ class LDesktop(QMainWindow):
         open_action = QAction("Abrir L Desktop", self)
         open_action.triggered.connect(self.show_main_window)
 
-        capture_action = QAction("Capturar tela  (F8)", self)
-        capture_action.triggered.connect(self.capture_with_hotkey)
+        self.tray_capture_action = QAction(
+            f"Capturar tela ({self.shortcuts['capture'].upper()})", self
+        )
+        self.tray_capture_action.triggered.connect(self.capture_with_hotkey)
 
-        replay_action = QAction("Salvar replay  (F9)", self)
-        replay_action.triggered.connect(self.save_replay)
+        self.tray_save_replay_action = QAction(
+            f"Salvar replay ({self.shortcuts['replay'].upper()})", self
+        )
+        self.tray_save_replay_action.triggered.connect(self.save_replay)
 
         self.tray_replay_action = QAction(
             "Pausar captura",
@@ -2366,19 +2615,15 @@ class LDesktop(QMainWindow):
             self.toggle_replay
         )
 
-        connection_action = QAction("Conexão Discord", self)
-        connection_action.triggered.connect(self.open_link_window)
 
         exit_action = QAction("Encerrar L Desktop", self)
         exit_action.triggered.connect(QApplication.quit)
 
         menu.addAction(open_action)
         menu.addSeparator()
-        menu.addAction(capture_action)
-        menu.addAction(replay_action)
+        menu.addAction(self.tray_capture_action)
+        menu.addAction(self.tray_save_replay_action)
         menu.addAction(self.tray_replay_action)
-        menu.addSeparator()
-        menu.addAction(connection_action)
         menu.addSeparator()
         menu.addAction(exit_action)
 

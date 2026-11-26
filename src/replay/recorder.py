@@ -37,6 +37,7 @@ class ReplayRecorder:
         self.process_guard = None
         self.library = ReplayLibrary()
         self.game_detector = GameDetector()
+        self.last_saved_game = UNKNOWN_GAME
 
     def detect_monitor(self):
         app = QGuiApplication.instance()
@@ -340,14 +341,22 @@ class ReplayRecorder:
                 f"[REPLAY LIBRARY] Process: "
                 f"{window_info.get('process_name') or 'Unknown'}"
             )
+            detection_source = detection.get("detection_source")
+            if not detection_source and detection.get("profile"):
+                detection_source = "Manual profile"
+            detection_source = detection_source or "No match"
+
             print(
-                f"[REPLAY LIBRARY] Identified game: {detected_game}"
+                f"[REPLAY LIBRARY] Identified game: {detected_game} "
+                f"(source: {detection_source})"
             )
 
         except Exception as error:
             print(
                 f"[REPLAY LIBRARY] Game detection failed: {error}"
             )
+
+        self.last_saved_game = detected_game
 
         ffprobe = FFPROBE
 

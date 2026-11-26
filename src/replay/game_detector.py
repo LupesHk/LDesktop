@@ -7,6 +7,7 @@ from ctypes import wintypes
 
 from core.paths import REPLAY_DIR
 from replay.library import UNKNOWN_GAME
+from replay.game_sources import detect_game_from_process
 
 
 DEFAULT_PROFILES = [
@@ -342,6 +343,17 @@ class GameDetector:
                 "matched": True,
                 "window_info": window_info,
                 "profile": dict(profile),
+            }
+
+        automatic_match = detect_game_from_process(window_info)
+
+        if automatic_match:
+            return {
+                "game_name": automatic_match["game_name"],
+                "matched": True,
+                "window_info": window_info,
+                "profile": None,
+                "detection_source": automatic_match.get("source"),
             }
 
         return {
