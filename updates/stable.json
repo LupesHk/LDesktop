@@ -1,6 +1,6 @@
 {
-    "version":  "0.1.9",
-    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.9/LDesktop-Setup-0.1.9.exe",
-    "sha256":  "5D379BBB21528C30536FF1D6D54CC28419B6198ADE37ECAE7EE19241118B2EBD",
-    "notes":  "Melhorias na experiência LIVE, com visualizador reformulado, mural de espectadores em tempo real, notificações de novas transmissões, suporte a tela cheia e mini player. Aprimoramentos na captura de áudio, atualização de presença e estabilidade geral do aplicativo."
+    "version":  "0.1.10",
+    "download_url":  "https://github.com/LupesHk/LDesktop/releases/download/v0.1.10/LDesktop-Setup-0.1.10.exe",
+    "sha256":  "3A1150549BA77ED49DF583C3D35B0ADCB6072E4BABECF7BB117161B3B9E49259",
+    "notes":  "melhorias na identificação automática de jogos, reconhecendo instalações da Steam, Epic Games e Xbox, além de utilizar o nome do processo e da janela para ampliar a compatibilidade. Também foram adicionadas configurações personalizáveis de atalhos de teclado, notificações visuais de sucesso e melhorias no gerenciamento e envio de capturas e replays."
 }
